@@ -55,11 +55,12 @@ handle_info({udp, Socket, Address, Port, Packet}, State = #{miners := Miners}) -
 	Miner = #miner{ip = Address, port = Port, time = epoch()},
 	case maps:is_key(Address, Miners) of
 	false ->
+		Miners0 = maps:put(Address, Miner, Miners),
 		?LOG({new, Miner});
 	true ->
+		Miners0 = maps:update(Address, Miner, Miners),
 		?LOG({known, Miner})
 	end,
-	Miners0 = maps:update(Address, Miner, Miners),
 	try
 		Request = decode(Packet),
 		Response = handle_message(Request),
@@ -108,14 +109,15 @@ encode(#message{version = Version, nonce = Number, command = Command, payload = 
 
 handle_message(M = #message{command = <<"HELO">>}) ->
 	M;
-handle_message(M = #message{nonce = N}) ->
+handle_message(M = #message{}) ->
 	?LOG(M).
 
 
 -define(UNIX_EPOCH_ZERO, 62167219200).
 
 epoch() ->
-	calendar:universal_time() - ?UNIX_EPOCH_ZERO.
+	{M, S, _} = erlang:timestamp(),
+	M * 1000000 + S.
 
 timestamp() ->
 	timestamp(calendar:universal_time()).
