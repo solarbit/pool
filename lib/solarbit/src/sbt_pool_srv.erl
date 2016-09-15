@@ -53,28 +53,25 @@ handle_cast(stop, State = #{socket := Socket}) ->
 
 handle_info({udp, Socket, Address, Port, Packet}, State = #{miners := Miners}) ->
 	Miner = #miner{ip = Address, port = Port, time = epoch()},
+	Request = decode(Packet),
+	{Miner0, Response} = handle_message(Miner, Request),
+	case Response of
+	#message{} ->
+		Reply = encode(Response),
+		ok = gen_udp:send(Socket, Address, Port, Reply);
+	_ ->
+		ok
+	end,
 	case maps:is_key(Address, Miners) of
 	false ->
-		Miners0 = maps:put(Address, Miner, Miners),
-		?LOG({new, Miner});
+		Miners0 = maps:put(Address, Miner0, Miners),
+		?LOG({new, Miner0});
 	true ->
-		Miners0 = maps:update(Address, Miner, Miners),
-		?LOG({known, Miner})
+		Miners0 = maps:update(Address, Miner0, Miners),
+		?LOG({known, Miner0})
 	end,
-	try
-		Request = decode(Packet),
-		Response = handle_message(Request),
-		case Response of
-		#message{} ->
-			Reply = encode(Response),
-			ok = gen_udp:send(Socket, Address, Port, Reply);
-		_ ->
-			ok
-		end
-	catch _:_ ->
-		?TTY({error, Packet})
-	end,
-	{noreply, State#{miners => Miners0}};
+	State0 = State#{miners => Miners0},
+	{noreply, State0};
 handle_info(Message, State) ->
 	?TTY({info, Message}),
 	{noreply, State}.
@@ -107,10 +104,23 @@ encode(#message{version = Version, nonce = Number, command = Command, payload = 
 	<<?SBT_MAGIC:32, Version/binary, Number:32/little, Command/binary, Size:32/little, Payload/binary>>.
 
 
-handle_message(M = #message{command = <<"HELO">>}) ->
-	M;
-handle_message(M = #message{}) ->
-	?LOG(M).
+handle_message(Miner, M = #message{command = <<"HELO">>}) ->
+	{Miner, M};
+handle_message(Miner, M = #message{command = <<"INFO">>, payload = Payload}) ->
+	Info = get_address(Payload),
+	Reply = #message{command = <<"PACK">>, payload = <<>>},
+	?LOG(M),
+	{Miner#miner{info = Info}, Reply};
+handle_message(Miner, M = #message{}) ->
+	{Miner, ?LOG(M)}.
+
+
+get_address(Bin) ->
+	get_address(Bin, <<>>).
+get_address(<<0, _/binary>>, Acc) ->
+	Acc;
+get_address(<<X, Bin/binary>>, Acc) ->
+	get_address(Bin, <<Acc/binary, X>>).
 
 
 -define(UNIX_EPOCH_ZERO, 62167219200).
