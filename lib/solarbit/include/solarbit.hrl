@@ -1,7 +1,7 @@
 % solarbit.hrl
 
 -define(TTY(Term), io:format(user, "[~p:~p] ~p~n", [?MODULE, ?LINE, Term])).
--define(LOG(Term), io:format(user, binary_to_list(timestamp()) ++ " ~p~n", [Term])).
+-define(LOG(Term), sbt_log_srv:write(Term)).
 
 -define(UDP_PORT, 21314). % <<"SB">>
 

@@ -2,13 +2,16 @@
 
 -include("solarbit.hrl").
 
+
+-export([start_link/1]).
+
 -behaviour(gen_server).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, code_change/3, terminate/2]).
 
 -compile(export_all).
 
 
-start() ->
+start_link([]) ->
 	gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 
@@ -17,6 +20,8 @@ stop() ->
 
 
 send(#miner{ip = IP}, Message) ->
+	send(IP, Message);
+send(IP, Message) when is_tuple(IP) ->
 	Bin = encode(Message),
 	?LOG(Message),
 	gen_server:call(?MODULE, {send, IP, Bin}).
@@ -32,7 +37,6 @@ state() ->
 
 init(Opts) ->
 	Port = proplists:get_value(port, Opts, ?UDP_PORT),
-	?TTY(Opts),
 	{ok, Socket} = gen_udp:open(Port, [binary]),
 	{ok, #{socket => Socket, port => Port, miners => #{}}}.
 
@@ -64,11 +68,11 @@ handle_info({udp, Socket, Address, Port, Packet}, State = #{miners := Miners}) -
 	end,
 	case maps:is_key(Address, Miners) of
 	false ->
-		Miners0 = maps:put(Address, Miner0, Miners),
-		?LOG({new, Miner0});
+		?LOG(Miner0),
+		Miners0 = maps:put(Address, Miner0, Miners);
 	true ->
-		Miners0 = maps:update(Address, Miner0, Miners),
-		?LOG({known, Miner0})
+		% ?LOG({known, Miner0})
+		Miners0 = maps:update(Address, Miner0, Miners)
 	end,
 	State0 = State#{miners => Miners0},
 	{noreply, State0};
@@ -88,6 +92,7 @@ terminate(Reason, _State) ->
 
 
 decode(<<?SBT_MAGIC:32, Version:4/binary, Number:32/little, Command:4/binary, Size:32/little, Bin/binary>>) ->
+	% ?TTY({Command, Size, Bin}),
 	case Bin of
 	<<Payload:Size/binary>> ->
 	 	ok;
@@ -108,7 +113,7 @@ handle_message(Miner, M = #message{command = <<"HELO">>}) ->
 	{Miner, M};
 handle_message(Miner, M = #message{command = <<"INFO">>, payload = Payload}) ->
 	Info = get_address(Payload),
-	Reply = #message{command = <<"PACK">>, payload = <<>>},
+	Reply = #message{command = <<"POOL">>, payload = <<>>},
 	?LOG(M),
 	{Miner#miner{info = Info}, Reply};
 handle_message(Miner, M = #message{}) ->
@@ -123,21 +128,6 @@ get_address(<<X, Bin/binary>>, Acc) ->
 	get_address(Bin, <<Acc/binary, X>>).
 
 
--define(UNIX_EPOCH_ZERO, 62167219200).
-
 epoch() ->
 	{M, S, _} = erlang:timestamp(),
 	M * 1000000 + S.
-
-timestamp() ->
-	timestamp(calendar:universal_time()).
-timestamp({Y, Mo, D, H, M, S}) ->
-	timestamp({{Y, Mo, D}, {H, M, S}});
-timestamp(Seconds) when is_integer(Seconds) ->
-	timestamp(calendar:gregorian_seconds_to_datetime(Seconds + ?UNIX_EPOCH_ZERO));
-timestamp(DateTime = {_, _}) ->
-	list_to_binary(to_iso8601(DateTime, "Z")).
-
-to_iso8601({{Year, Month, Day}, {Hour, Min, Sec}}, Zone) ->
-	ISO_8601 = "~4.10.0B-~2.10.0B-~2.10.0BT~2.10.0B:~2.10.0B:~2.10.0B~s",
-	io_lib:format(ISO_8601, [Year, Month, Day, Hour, Min, Sec, Zone]).

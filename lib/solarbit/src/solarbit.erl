@@ -5,11 +5,11 @@
 
 
 start() ->
-	sbt_pool_srv:start().
+	application:start(solarbit).
 
 
 stop() ->
-	sbt_pool_srv:stop().
+	application:stop(solarbit).
 
 
 miners() ->

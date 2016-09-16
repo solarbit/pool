@@ -1,3 +1,3 @@
-export ERL_LIBS=$ERL_LIBS:../lib
+# Should update ERL_LIBS?
 
 erl -sname solarbit -s solarbit
