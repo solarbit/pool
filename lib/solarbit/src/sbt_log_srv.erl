@@ -18,18 +18,20 @@ stop() ->
 	gen_server:cast(?MODULE, stop).
 
 
-write(#message{nonce = Nonce, command = Command, payload = Payload}) ->
+write(#message{nonce = Nonce, type = Type, payload = Payload}) when byte_size(Payload) > 0 ->
 	ID = io_lib:format("~w", [Nonce]),
-	Message = case is_binary(Payload) andalso byte_size(Payload) of
-		0 ->
-			[timestamp(), " [", Command, "] id:", ID, "\n"];
-		_ ->
-			[timestamp(), " [", Command, "] id:", ID, " payload:", hex:encode(Payload), "\n"]
-		end,
+	Message = [timestamp(), " [", Type, "] id:", ID, " payload:", hex:encode(Payload), "\n"],
 	gen_server:cast(?MODULE, {log, Message});
-write(#miner{ip = {A, B, C, D}, port = Port, time = _Time, info = Info}) ->
-	Message = io_lib:format("ip:~p.~p.~p.~p:~p address:", [A, B, C, D, Port]),
-	gen_server:cast(?MODULE, {log, [timestamp(), " [MINER] ", Message, Info, "\n"]});
+write(#message{nonce = Nonce, type = Type}) ->
+	ID = io_lib:format("~w", [Nonce]),
+	Message = [timestamp(), " [", Type, "] id:", ID, "\n"],
+	gen_server:cast(?MODULE, {log, Message});
+write(#miner{ip = {A, B, C, D}, port = Port, time = _Time, address = Address}) when is_binary(Address) ->
+	Message = io_lib:format("host:~p.~p.~p.~p:~p address:", [A, B, C, D, Port]),
+	gen_server:cast(?MODULE, {log, [timestamp(), " [NODE] ", Message, Address, "\n"]});
+write(#miner{ip = {A, B, C, D}, port = Port, time = _Time}) ->
+	Message = io_lib:format("host:~p.~p.~p.~p:~p", [A, B, C, D, Port]),
+	gen_server:cast(?MODULE, {log, [timestamp(), " [NODE] ", Message, "\n"]});
 write(Message) ->
 	Bin = io_lib:format("[???] ~p~n", [Message]),
 	gen_server:cast(?MODULE, {log, [timestamp(), Bin]}).

@@ -8,9 +8,9 @@
 -define(SBT_MAGIC, 1397574912).
 -define(SBT_VERSION, <<0, 1, 0, $A>>).
 
--record(message, {magic = ?SBT_MAGIC, version = ?SBT_VERSION, nonce = 1, command, payload = <<>>}).
+-record(message, {magic = ?SBT_MAGIC, version = ?SBT_VERSION, nonce = 1, type, payload = <<>>}).
 
--record(miner, {ip, port, info, time}).
+-record(miner, {ip, port, address, time}).
 
 -define(TEST_BLOCK, <<1,0,0,0,234,141,253,92,14,35,8,200,179,166,115,97,93,250,242,143,169,3,156,
 	88,73,250,88,75,5,15,0,0,0,0,0,0,34,89,134,254,85,127,253,145,191,7,250,55,
