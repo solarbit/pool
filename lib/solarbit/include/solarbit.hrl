@@ -6,7 +6,7 @@
 -define(UDP_PORT, 21314). % <<"SB">>
 
 -define(SBT_MAGIC, 1397574912).
--define(SBT_VERSION, <<0, 1, 0, $A>>).
+-define(SBT_VERSION, <<0, 3, 0, $A>>).
 
 -record(message, {magic = ?SBT_MAGIC, version = ?SBT_VERSION, nonce = 1, type, payload = <<>>}).
 

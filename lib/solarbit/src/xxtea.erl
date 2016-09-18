@@ -2,11 +2,13 @@
 % See LICENSE
 -module(xxtea).
 
--export([encode/2, decode/2]).
--export([test/0]).
+-export([encode/2, encode/3, decode/2, decode/3]).
+-export([test/0, test/1, test/3]).
 
 -define(DELTA, 16#9E3779B9).
 -define(INT32_MASK, 16#FFFFFFFF).
+
+-define(TEST_KEY, <<"SolarBitSolarBit">>).
 
 % Ref: http://en.wikipedia.org/wiki/XXTEA
 
@@ -19,9 +21,16 @@
 
 
 encode(Key, Plaintext) ->
-	{V, K, Rounds} = get_args(Key, Plaintext),
+	encode(Key, Plaintext, little).
+
+encode(Key, Plaintext, Endian) when byte_size(Plaintext) rem 4 == 0 ->
+	{V, K, Rounds} = get_args(Key, Endian, Plaintext),
 	V0 = encode0(V, K, Rounds, lists:last(V), ?DELTA),
-	int32list_to_binary(V0).
+	int32list_to_binary(Endian, V0);
+encode(Key, Plaintext, Endian) ->
+	% TODO: Zero-padding may not be the best scheme...
+	Pad = (4 - byte_size(Plaintext) rem 4) bsl 3,
+	encode(Key, <<Plaintext/binary, 0:Pad>>, Endian).
 
 
 encode0(V, K, Rounds, Z, Sum) when Rounds > 0 ->
@@ -40,9 +49,12 @@ encode1([H], K, Z, Sum, E, P, Acc)  ->
 
 
 decode(Key, Ciphertext) ->
-	{V, K, Rounds} = get_args(Key, Ciphertext),
+	decode(Key, Ciphertext, little).
+
+decode(Key, Ciphertext, Endian) ->
+	{V, K, Rounds} = get_args(Key, Endian, Ciphertext),
 	V0 = decode0(V, K, Rounds, hd(V), Rounds * ?DELTA),
-	int32list_to_binary(V0).
+	int32list_to_binary(Endian, V0).
 
 
 decode0(V, K, Rounds, Y, Sum) when Rounds > 0 ->
@@ -67,25 +79,27 @@ mx(K, Z, Y, Sum, E, P) ->
 	(X1 + X2) bxor ((Sum bxor Y) + (X3 bxor Z)).
 
 
-get_args(Key, Bin) ->
-	K = list_to_tuple(int32list_from_binary(Key)),
-	V = int32list_from_binary(Bin),
+get_args(Key, Endian, Bin) ->
+	K = list_to_tuple(int32list_from_binary(Endian, Key)),
+	V = int32list_from_binary(Endian, Bin),
 	Rounds = 6 + 52 div length(V),
 	{V, K, Rounds}.
 
 
-int32list_from_binary(Bin) ->
-	int32list_from_binary(Bin, []).
-%int32list_from_binary(<<X:32/little, Bin/binary>>, Acc) ->
-%	int32list_from_binary(Bin, [X|Acc]);
-int32list_from_binary(<<X:32, Bin/binary>>, Acc) ->
-	int32list_from_binary(Bin, [X|Acc]);
-int32list_from_binary(<<>>, Acc) ->
+int32list_from_binary(Endian, Bin) ->
+	int32list_from_binary(Endian, Bin, []).
+
+int32list_from_binary(little, <<X:32/little, Bin/binary>>, Acc) ->
+	int32list_from_binary(little, Bin, [X|Acc]);
+int32list_from_binary(big, <<X:32, Bin/binary>>, Acc) ->
+ 	int32list_from_binary(big, Bin, [X|Acc]);
+int32list_from_binary(_, <<>>, Acc) ->
 	lists:reverse(Acc).
 
 
-int32list_to_binary(List) ->
-%	<< <<X:32/little>> || X <- List>>.
+int32list_to_binary(little, List) ->
+	<< <<X:32/little>> || X <- List>>;
+int32list_to_binary(big, List) ->
 	<< <<X:32>> || X <- List>>.
 
 
@@ -117,8 +131,16 @@ test() ->
 		{<<"6a6f686e636b656e64616c6c6a6f686e">>,<<"4142434445464700">>, <<"e56e193c212ec827">>, <<"93951ad360650022">>},
 		{<<"6a6f686e636b656e64616c6c6a6f686e">>,<<"4142434445464748">>, <<"2f920605c75725aa">>, <<"cdeb72b9c903ce52">>}
 	],
-	[test(hex:decode(Key), hex:decode(Text), hex:decode(Cipher)) || {Key, Text, Cipher, _Little} <- Vectors],
+	[test(hex:decode(Key), hex:decode(Text), hex:decode(Cipher)) || {Key, Text, _NBOCipher, Cipher} <- Vectors],
 	ok.
+
+
+test(Text) ->
+	Cipher = encode(?TEST_KEY, Text),
+	Size = byte_size(Text),
+	<<Text:Size/binary, _/binary>> = decode(?TEST_KEY, Cipher),
+	{ok, hex:encode(Cipher)}.
+
 
 test(Key, Text, Cipher) ->
 	Cipher = encode(Key, Text),
