@@ -37,7 +37,8 @@ state() ->
 init(Opts) ->
 	Port = proplists:get_value(port, Opts, ?UDP_PORT),
 	{ok, Socket} = gen_udp:open(Port, [binary]),
-	{ok, #{socket => Socket, port => Port, miners => #{}}}.
+	IP = get_local_ip(),
+	{ok, #{socket => Socket, local => IP, port => Port, miners => #{}}}.
 
 
 handle_call({send, IP, Message}, _From, State = #{socket := Socket, port := Port}) ->
@@ -57,6 +58,9 @@ handle_cast(stop, State = #{socket := Socket}) ->
 	{stop, normal, State}.
 
 
+handle_info({udp, _Socket, Host, _Port, _Packet}, State = #{local := Host}) ->
+	?TTY(loopback), % ignore messages from self
+	{noreply, State};
 handle_info({udp, Socket, Host, Port, Packet}, State = #{miners := Miners}) ->
 	case maps:is_key(Host, Miners) of
 	true ->
@@ -121,11 +125,11 @@ handle_message(Miner, #message{type = <<"INFO">>, nonce = Nonce, payload = Paylo
 	Address = get_address(Payload),
 	Miner0 = Miner#miner{address = Address},
 	Coinbase = coinbase(Miner0),
-	?LOG(Miner0),
 	Reply = #message{type = <<"POOL">>, nonce = Nonce, payload = Coinbase},
 	{Miner0, Reply};
 handle_message(Miner, M = #message{}) ->
-	{Miner, ?LOG(M)}.
+	?TTY({unknown, M}),
+	{Miner, ok}.
 
 
 get_address(Bin) ->
@@ -145,7 +149,13 @@ coinbase(#miner{address = undefined}) ->
 	<<>>;
 coinbase(#miner{address = Address}) ->
 	FakeHeight = epoch(),
-	String = <<"//solarbit/SMMA/">>,
+	String = <<"//SolarBit/SMM/A/">>,
 	Hash = crypto:hash(sha, Address),
 	<<3, FakeHeight:24, ?OP_DROP, (byte_size(String)), String/binary, ?OP_DROP,
 		(byte_size(Hash)), Hash/binary, ?OP_DROP, ?OP_RETURN, 0:64>>.
+
+
+get_local_ip() ->
+	{ok, L} = inet:getif(),
+	[IP] = [X || {X, _, _} <- L, X =/= {127, 0, 0, 1}],
+	IP.
