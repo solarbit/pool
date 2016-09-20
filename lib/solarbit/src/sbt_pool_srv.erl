@@ -35,10 +35,11 @@ state() ->
 
 
 init(Opts) ->
+	Key = proplists:get_value(key, Opts, <<"SolarBitSolarBit">>),
 	Port = proplists:get_value(port, Opts, ?UDP_PORT),
 	{ok, Socket} = gen_udp:open(Port, [binary]),
 	IP = get_local_ip(),
-	{ok, #{socket => Socket, local => IP, port => Port, miners => #{}}}.
+	{ok, #{key => Key, socket => Socket, local => IP, port => Port, miners => #{}}}.
 
 
 handle_call({send, IP, Message}, _From, State = #{socket := Socket, port := Port}) ->
@@ -61,7 +62,7 @@ handle_cast(stop, State = #{socket := Socket}) ->
 handle_info({udp, _Socket, Host, _Port, _Packet}, State = #{local := Host}) ->
 	?TTY(loopback), % ignore messages from self
 	{noreply, State};
-handle_info({udp, Socket, Host, Port, Packet}, State = #{miners := Miners}) ->
+handle_info({udp, Socket, Host, Port, Packet}, State = #{key := Key, miners := Miners}) ->
 	case maps:is_key(Host, Miners) of
 	true ->
 		Miner = maps:get(Host, Miners),
@@ -71,7 +72,7 @@ handle_info({udp, Socket, Host, Port, Packet}, State = #{miners := Miners}) ->
 		Miner0 = #miner{ip = Host, port = Port, time = epoch()},
 		Miners0 = maps:put(Host, Miner0, Miners)
 	end,
-	Request = decode(Packet),
+	Request = decode(Key, Packet),
 	?LOG(Request),
 	{Miner1, Response} = handle_message(Miner0, Request),
 	case Response of
@@ -101,17 +102,21 @@ terminate(Reason, _State) ->
 	ok.
 
 
-decode(<<?SBT_MAGIC:32, Version:4/binary, Number:32/little, Type:4/binary, Size:32/little, Bin/binary>>) ->
-	% ?TTY({type, Size, Bin}),
-	case Bin of
-	<<Payload:Size/binary>> ->
-	 	ok;
-	<<Payload:Size/binary, Bin0/binary>>  ->
-		?TTY({unparsed, Bin0})
-	end,
+decode(Key, <<?SBT_MAGIC:32, Version:4/binary, Number:32/little, Type:4/binary, Size:32/little, Bin/binary>>) ->
+	Payload = decode_payload(Key, Size, Bin),
 	#message{magic = ?SBT_MAGIC, version = Version, nonce = Number, type = Type, payload = Payload};
-decode(Bin) ->
+decode(_, Bin) ->
 	Bin.
+
+
+decode_payload(_, 0, <<>>) ->
+	<<>>;
+decode_payload(Key, Size, Bin) when byte_size(Bin) == Size ->
+	Value = xxtea:decode(Key, Bin),
+	Pad = binary:last(Value),
+	PayloadSize = byte_size(Value) - Pad,
+	<<Payload:PayloadSize/binary, _:Pad/binary>> = Value,
+	Payload.
 
 
 encode(#message{version = Version, nonce = Number, type = Type, payload = Payload}) ->
@@ -119,14 +124,20 @@ encode(#message{version = Version, nonce = Number, type = Type, payload = Payloa
 	<<?SBT_MAGIC:32, Version/binary, Number:32/little, Type/binary, Size:32/little, Payload/binary>>.
 
 
-handle_message(Miner, M = #message{type = <<"HELO">>}) ->
-	{Miner, M};
-handle_message(Miner, #message{type = <<"INFO">>, nonce = Nonce, payload = Payload}) ->
-	Address = get_address(Payload),
+% DONE = 80b34dd2.
+handle_message(Miner, #message{type = <<"HELO">>, nonce = Nonce}) ->
+	Reply = #message{type = <<"INFO">>, nonce = Nonce},
+	{Miner, Reply};
+handle_message(Miner, #message{type = <<"NODE">>, nonce = Nonce, payload = Payload}) ->
+	Address = Payload, % get_address(Payload),
+	?TTY(Address),
 	Miner0 = Miner#miner{address = Address},
 	Coinbase = coinbase(Miner0),
 	Reply = #message{type = <<"POOL">>, nonce = Nonce, payload = Coinbase},
 	{Miner0, Reply};
+handle_message(Miner, #message{type = <<"OKAY">>, nonce = Nonce}) ->
+	Reply = #message{type = <<"WAIT">>, nonce = Nonce},
+	{Miner, Reply};
 handle_message(Miner, M = #message{}) ->
 	?TTY({unknown, M}),
 	{Miner, ok}.

@@ -51,6 +51,8 @@ encode1([H], K, Z, Sum, E, P, Acc)  ->
 decode(Key, Ciphertext) ->
 	decode(Key, Ciphertext, little).
 
+decode(_Key, Ciphertext, _Endian) when byte_size(Ciphertext) < 8 ->
+	Ciphertext;
 decode(Key, Ciphertext, Endian) ->
 	{V, K, Rounds} = get_args(Key, Endian, Ciphertext),
 	V0 = decode0(V, K, Rounds, hd(V), Rounds * ?DELTA),

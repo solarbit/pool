@@ -25,8 +25,8 @@ coinbase() ->
 	[{Host, sbt_pool_srv:coinbase(Miner)} || Miner = #miner{ip = Host} <- Miners].
 
 
-send(Miner, helo) ->
-	sbt_pool_srv:send(Miner, #message{type = <<"HELO">>});
+send(Miner, ping) ->
+	sbt_pool_srv:send(Miner, #message{type = <<"PING">>});
 send(Miner, stat) ->
 	sbt_pool_srv:send(Miner, #message{type = <<"STAT">>});
 send(Miner, test) ->
