@@ -42,10 +42,10 @@ init(Opts) ->
 	{ok, #{key => Key, socket => Socket, local => IP, port => Port, miners => #{}}}.
 
 
-handle_call({send, IP, Message}, _From, State = #{socket := Socket, port := Port}) ->
+handle_call({send, IP, Message}, _From, State = #{socket := Socket, port := Port, key := Key}) ->
 	Message0 = Message#message{nonce = epoch()},
 	?LOG(Message0),
-	Packet = encode(Message0),
+	Packet = encode(Key, Message0),
 	Reply = gen_udp:send(Socket, IP, Port, Packet),
 	{reply, Reply, State};
 handle_call(miners, _From, State = #{miners := Miners}) ->
@@ -78,7 +78,7 @@ handle_info({udp, Socket, Host, Port, Packet}, State = #{key := Key, miners := M
 	case Response of
 	#message{} ->
 		?LOG(Response),
-		Reply = encode(Response),
+		Reply = encode(Key, Response),
 		ok = gen_udp:send(Socket, Host, Port, Reply);
 	ok ->
 		ok;
@@ -112,6 +112,7 @@ decode(_, Bin) ->
 decode_payload(_, 0, <<>>) ->
 	<<>>;
 decode_payload(Key, Size, Bin) when byte_size(Bin) == Size ->
+	?TTY({encrypted, hex:encode(Bin)}),
 	Value = xxtea:decode(Key, Bin),
 	Pad = binary:last(Value),
 	PayloadSize = byte_size(Value) - Pad,
@@ -119,36 +120,55 @@ decode_payload(Key, Size, Bin) when byte_size(Bin) == Size ->
 	Payload.
 
 
-encode(#message{version = Version, nonce = Number, type = Type, payload = Payload}) ->
-	Size = byte_size(Payload),
-	<<?SBT_MAGIC:32, Version/binary, Number:32/little, Type/binary, Size:32/little, Payload/binary>>.
+encode(Key, #message{version = Version, nonce = Number, type = Type, payload = Payload}) ->
+	Encrypted = encode_payload(Key, Payload),
+	Size = byte_size(Encrypted),
+%	Size = byte_size(Payload),
+%	Encrypted = Payload,
+	<<?SBT_MAGIC:32, Version/binary, Number:32/little, Type/binary, Size:32/little, Encrypted/binary>>.
+
+encode_payload(_Key, <<>>) ->
+	<<>>;
+encode_payload(Key, Bin) when size(Bin) >= 4 ->
+	PayloadSize = byte_size(Bin),
+	Pad = 4 - (PayloadSize rem 4),
+	<<Padding:Pad/binary, _/binary>> = <<Pad, Pad, Pad, Pad>>,
+	xxtea:encode(Key, <<Bin/binary, Padding/binary>>);
+encode_payload(Key, Bin) ->
+	PayloadSize = 4 + byte_size(Bin),
+	Pad = 8 - (PayloadSize rem 4),
+	<<Padding:Pad/binary, _/binary>> = <<Pad, Pad, Pad, Pad, Pad, Pad, Pad>>,
+	xxtea:encode(Key, <<Bin/binary, Padding/binary>>).
 
 
 % DONE = 80b34dd2.
-handle_message(Miner, #message{type = <<"HELO">>, nonce = Nonce}) ->
-	Reply = #message{type = <<"INFO">>, nonce = Nonce},
+handle_message(Miner, #message{type = <<"HELO">>, nonce = _Nonce}) ->
+	Reply = #message{type = <<"SYNC">>, nonce = epoch()},
 	{Miner, Reply};
 handle_message(Miner, #message{type = <<"NODE">>, nonce = Nonce, payload = Payload}) ->
-	Address = Payload, % get_address(Payload),
+	Address = Payload,
 	?TTY(Address),
 	Miner0 = Miner#miner{address = Address},
 	Coinbase = coinbase(Miner0),
+	?TTY(hex:encode(Coinbase)),
 	Reply = #message{type = <<"POOL">>, nonce = Nonce, payload = Coinbase},
 	{Miner0, Reply};
 handle_message(Miner, #message{type = <<"OKAY">>, nonce = Nonce}) ->
 	Reply = #message{type = <<"WAIT">>, nonce = Nonce},
 	{Miner, Reply};
+handle_message(Miner, M = #message{type = <<"INFO">>}) ->
+	?TTY(M),
+	{Miner, ok};
+handle_message(Miner, #message{type = <<"BEST">>}) ->
+	{Miner, ok};
+handle_message(Miner, #message{type = <<"DONE">>}) ->
+	{Miner, ok};
+handle_message(Miner, M = #message{type = <<"NACK">>}) ->
+	?TTY(M),
+	{Miner, ok};
 handle_message(Miner, M = #message{}) ->
 	?TTY({unknown, M}),
 	{Miner, ok}.
-
-
-get_address(Bin) ->
-	get_address(Bin, <<>>).
-get_address(<<0, _/binary>>, Acc) ->
-	Acc;
-get_address(<<X, Bin/binary>>, Acc) ->
-	get_address(Bin, <<Acc/binary, X>>).
 
 
 epoch() ->

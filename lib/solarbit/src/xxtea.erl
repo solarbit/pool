@@ -10,6 +10,8 @@
 
 -define(TEST_KEY, <<"SolarBitSolarBit">>).
 
+-compile(export_all).
+
 % Ref: http://en.wikipedia.org/wiki/XXTEA
 
 % Ref: http://read.pudn.com/downloads187/sourcecode/windows/other/877059/xxtea.cpp__.htm
@@ -108,6 +110,9 @@ int32list_to_binary(big, List) ->
 int32(X) ->
 	X band ?INT32_MASK.
 
+
+test(Key, Text) ->
+	hex:encode(encode(Key, Text)).
 
 test() ->
 	Vectors = [
