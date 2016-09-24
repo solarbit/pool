@@ -114,6 +114,7 @@ decode_payload(_, 0, <<>>) ->
 decode_payload(Key, Size, Bin) when byte_size(Bin) == Size ->
 	?TTY({encrypted, hex:encode(Bin)}),
 	Value = xxtea:decode(Key, Bin),
+	?TTY({decrypted, hex:encode(Value)}),
 	Pad = binary:last(Value),
 	PayloadSize = byte_size(Value) - Pad,
 	<<Payload:PayloadSize/binary, _:Pad/binary>> = Value,

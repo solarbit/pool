@@ -38,7 +38,7 @@ write(Message) ->
 
 
 init([]) ->
-	FileName = code:priv_dir(solarbit) ++ "/pool.log",
+	FileName = path:new([code:lib_dir(solarbit), <<"../../log/pool.log">>]),
 	{ok, File} = file:open(FileName, [append, raw]),
 	{ok, #{file => File}}.
 

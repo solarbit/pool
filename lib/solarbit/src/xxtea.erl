@@ -1,5 +1,6 @@
-% Copyright 2016 SolarBit <steve@solarbit.cc>
+% Copyright 2016 solarbit.cc <steve@solarbit.cc>
 % See LICENSE
+
 -module(xxtea).
 
 -export([encode/2, encode/3, decode/2, decode/3]).
@@ -12,14 +13,8 @@
 
 -compile(export_all).
 
-% Ref: http://en.wikipedia.org/wiki/XXTEA
-
-% Ref: http://read.pudn.com/downloads187/sourcecode/windows/other/877059/xxtea.cpp__.htm
-% "Zero padding is adequate for text messages (which cannot contain the character NUL = 0x00), but in a
-% binary context it is not a reversible padding scheme. If the data can include the byte 0x00, it is
-% recommended to use the "Pad80" scheme in which you always add a single '1' bit to your data (even if the
-% data is already a multiple of the block length) then pad with '0' bits to a multiple of the block length.
-% This padding can always be reversed without confusion".
+%@ref http://en.wikipedia.org/wiki/XXTEA
+%@ref https://tools.ietf.org/html/rfc2315#section-10.3
 
 
 encode(Key, Plaintext) ->

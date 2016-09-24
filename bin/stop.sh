@@ -1,1 +1,9 @@
-# Need to create a linux service... erl_run?
+#!/usr/bin/env escript
+%% -*- erlang -*-
+
+main([]) ->
+    {ok, _} = net_kernel:start([pool_ctrl, shortnames]),
+	[_|T] = re:split(atom_to_binary(node(), utf8), <<"(@)">>),
+	Pool = binary_to_atom(iolist_to_binary([<<"solarbit">>|T]), utf8),
+    Res = rpc:call(Pool, init, stop, []),
+    io:fwrite("==> ~p~n", [Res]).
