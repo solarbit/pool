@@ -180,10 +180,9 @@ epoch() ->
 coinbase(#miner{address = undefined}) ->
 	<<>>;
 coinbase(#miner{address = Address}) ->
-	FakeHeight = epoch(),
 	String = <<"//SolarBit/SMM/A/">>,
 	Hash = crypto:hash(sha, Address),
-	<<3, FakeHeight:24, ?OP_DROP, (byte_size(String)), String/binary, ?OP_DROP,
+	<<3, 0:24, ?OP_DROP, (byte_size(String)), String/binary, ?OP_DROP,
 		(byte_size(Hash)), Hash/binary, ?OP_DROP, ?OP_RETURN, 0:64>>.
 
 

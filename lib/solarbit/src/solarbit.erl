@@ -35,7 +35,9 @@ send(Miner, ping) ->
 send(Miner, stat) ->
 	sbt_pool_srv:send(Miner, #message{type = <<"STAT">>});
 send(Miner, mine) ->
-	sbt_pool_srv:send(Miner, #message{type = <<"MINE">>});
+	Hash = crypto:hash(sha256, <<"solarbit.cc">>),
+	Payload = <<431498:32/little, (?TEST_BLOCK)/binary, 1, Hash/binary>>,
+	sbt_pool_srv:send(Miner, #message{type = <<"MINE">>, payload = Payload});
 send(Miner, test) ->
 	sbt_pool_srv:send(Miner, #message{type = <<"TEST">>, payload = ?TEST_BLOCK}).
 
