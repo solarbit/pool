@@ -1,3 +1,6 @@
+% Copyright 2016 solarbit.cc <steve@solarbit.cc>
+% See LICENSE
+
 -module(sbt_sup).
 
 -include("solarbit.hrl").
@@ -7,7 +10,8 @@
 -behaviour(supervisor).
 -export([init/1]).
 
--define(CHILD(I, Type), {I, {I, start_link, [[]]}, permanent, 5000, Type, [I]}).
+-define(SUPERVISOR(I), {I, {I, start_link, [[]]}, permanent, infinity, supervisor, [I]}).
+-define(WORKER(I), {I, {I, start_link, [[]]}, permanent, 5000, worker, [I]}).
 
 
 start_link() ->
@@ -16,6 +20,8 @@ start_link() ->
 
 init([]) ->
     {ok, {{one_for_one, 0, 1}, [
-		?CHILD(sbt_pool_srv, worker),
-		?CHILD(sbt_log_srv, worker)
+		?WORKER(sbt_log_srv),
+		?SUPERVISOR(sbt_db_srv),
+		?WORKER(sbt_btc_srv),
+		?WORKER(sbt_pool_srv)
 	] }}.

@@ -1,8 +1,9 @@
+% Copyright 2016 solarbit.cc <steve@solarbit.cc>
+% See LICENSE
+
 -module(sbt_pool_srv).
 
 -include("solarbit.hrl").
--include("bitcoin_script.hrl").
-
 
 -export([start_link/1]).
 
@@ -20,7 +21,7 @@ stop() ->
 	gen_server:cast(?MODULE, stop).
 
 
-send(#miner{ip = IP}, Message) ->
+send(#sbt_miner{ip = IP}, Message) ->
 	send(IP, Message);
 send(IP, Message) when is_tuple(IP) ->
 	gen_server:call(?MODULE, {send, IP, Message}).
@@ -30,32 +31,42 @@ miners() ->
 	gen_server:call(?MODULE, miners).
 
 
+% TEMP
+set_key(Key) when byte_size(Key) == 16 ->
+	gen_server:call(?MODULE, {key, Key}).
+
+% TEMP
 state() ->
 	gen_server:call(?MODULE, state).
 
 
 init(Opts) ->
-	Key = proplists:get_value(key, Opts, <<"SolarBitSolarBit">>),
+	Key = proplists:get_value(key, Opts, ?NULL_XXTEA_KEY),
 	Port = proplists:get_value(port, Opts, ?UDP_PORT),
 	{ok, Socket} = gen_udp:open(Port, [binary]),
-	IP = get_local_ip(),
+	ok = sbt_btc_srv:notify([block]),
+	IP = netutil:get_local_ip(),
+	log(<<"Started">>),
 	{ok, #{key => Key, socket => Socket, local => IP, port => Port, miners => #{}}}.
 
 
 handle_call({send, IP, Message}, _From, State = #{socket := Socket, port := Port, key := Key}) ->
-	Message0 = Message#message{nonce = epoch()},
-	?LOG(Message0),
-	Packet = encode(Key, Message0),
+	Message0 = Message#sbt_message{nonce = dttm:now()},
+	log("=> ", Message0),
+	Packet = sbt_codec:encode(Key, Message0),
 	Reply = gen_udp:send(Socket, IP, Port, Packet),
 	{reply, Reply, State};
 handle_call(miners, _From, State = #{miners := Miners}) ->
 	{reply, {ok, maps:values(Miners)}, State};
+handle_call({key, Key}, _From, State) ->
+	{reply, ok, State#{key => Key}};
 handle_call(state, _From, State) ->
 	{reply, {ok, State}, State}.
 
 
 handle_cast(stop, State = #{socket := Socket}) ->
 	gen_udp:close(Socket),
+	log(<<"Stopped">>),
 	{stop, normal, State}.
 
 
@@ -66,19 +77,19 @@ handle_info({udp, Socket, Host, Port, Packet}, State = #{key := Key, miners := M
 	case maps:is_key(Host, Miners) of
 	true ->
 		Miner = maps:get(Host, Miners),
-		Miner0 = Miner#miner{port = Port, time = epoch()},
+		Miner0 = Miner#sbt_miner{port = Port, time = dttm:now()},
 		Miners0 = Miners;
 	false ->
-		Miner0 = #miner{ip = Host, port = Port, time = epoch()},
+		Miner0 = #sbt_miner{ip = Host, port = Port, time = dttm:now()},
 		Miners0 = maps:put(Host, Miner0, Miners)
 	end,
-	Request = decode(Key, Packet),
-	?LOG(Request),
+	Request = sbt_codec:decode(Key, Packet),
+	log("<= ", Request),
 	{Miner1, Response} = handle_message(Miner0, Request),
 	case Response of
-	#message{} ->
-		?LOG(Response),
-		Reply = encode(Key, Response),
+	#sbt_message{} ->
+		log("=> ", Response),
+		Reply = sbt_codec:encode(Key, Response),
 		ok = gen_udp:send(Socket, Host, Port, Reply);
 	ok ->
 		ok;
@@ -87,6 +98,10 @@ handle_info({udp, Socket, Host, Port, Packet}, State = #{key := Key, miners := M
 	end,
 	Miners1 = maps:update(Host, Miner1, Miners0),
 	{noreply, State#{miners => Miners1}};
+handle_info({block, Height, PrevHash, Txns}, State = #{miners := _Miners}) ->
+	% TODO: Send miners instructions
+	?TTY({block, Height, hex:encode(<<PrevHash:256>>), length(Txns)}),
+	{noreply, State};
 handle_info(Message, State) ->
 	?TTY({handle_info, Message}),
 	{noreply, State}.
@@ -102,91 +117,43 @@ terminate(Reason, _State) ->
 	ok.
 
 
-decode(Key, <<?SBT_MAGIC:32, Version:4/binary, Number:32/little, Type:4/binary, Size:32/little, Bin/binary>>) ->
-	Payload = decode_payload(Key, Size, Bin),
-	#message{magic = ?SBT_MAGIC, version = Version, nonce = Number, type = Type, payload = Payload};
-decode(_, Bin) ->
-	Bin.
-
-
-decode_payload(_, 0, <<>>) ->
-	<<>>;
-decode_payload(Key, Size, Bin) when byte_size(Bin) == Size ->
-	?TTY({encrypted, hex:encode(Bin)}),
-	Value = xxtea:decode(Key, Bin),
-	?TTY({decrypted, hex:encode(Value)}),
-	Pad = binary:last(Value),
-	PayloadSize = byte_size(Value) - Pad,
-	<<Payload:PayloadSize/binary, _:Pad/binary>> = Value,
-	Payload.
-
-
-encode(Key, #message{version = Version, nonce = Number, type = Type, payload = Payload}) ->
-	Encrypted = encode_payload(Key, Payload),
-	Size = byte_size(Encrypted),
-%	Size = byte_size(Payload),
-%	Encrypted = Payload,
-	<<?SBT_MAGIC:32, Version/binary, Number:32/little, Type/binary, Size:32/little, Encrypted/binary>>.
-
-encode_payload(_Key, <<>>) ->
-	<<>>;
-encode_payload(Key, Bin) when size(Bin) >= 4 ->
-	PayloadSize = byte_size(Bin),
-	Pad = 4 - (PayloadSize rem 4),
-	<<Padding:Pad/binary, _/binary>> = <<Pad, Pad, Pad, Pad>>,
-	xxtea:encode(Key, <<Bin/binary, Padding/binary>>);
-encode_payload(Key, Bin) ->
-	PayloadSize = 4 + byte_size(Bin),
-	Pad = 8 - (PayloadSize rem 4),
-	<<Padding:Pad/binary, _/binary>> = <<Pad, Pad, Pad, Pad, Pad, Pad, Pad>>,
-	xxtea:encode(Key, <<Bin/binary, Padding/binary>>).
-
-
 % DONE = 80b34dd2.
-handle_message(Miner, #message{type = <<"HELO">>, nonce = _Nonce}) ->
-	Reply = #message{type = <<"SYNC">>, nonce = epoch()},
+handle_message(Miner, #sbt_message{type = <<"HELO">>, nonce = _Nonce}) ->
+	Reply = #sbt_message{type = <<"SYNC">>, nonce = dttm:now()},
 	{Miner, Reply};
-handle_message(Miner, #message{type = <<"NODE">>, nonce = Nonce, payload = Payload}) ->
-	Address = Payload,
-	?TTY(Address),
-	Miner0 = Miner#miner{address = Address},
-	Coinbase = coinbase(Miner0),
-	?TTY(hex:encode(Coinbase)),
-	Reply = #message{type = <<"POOL">>, nonce = Nonce, payload = Coinbase},
+handle_message(Miner, #sbt_message{type = <<"NODE">>, nonce = Nonce, payload = Address}) ->
+	Miner0 = Miner#sbt_miner{address = Address},
+	Coinbase = sbt_codec:coinbase(Address),
+	Reply = #sbt_message{type = <<"POOL">>, nonce = Nonce, payload = Coinbase},
 	{Miner0, Reply};
-handle_message(Miner, #message{type = <<"OKAY">>, nonce = Nonce}) ->
-	Reply = #message{type = <<"WAIT">>, nonce = Nonce},
+handle_message(Miner, #sbt_message{type = <<"OKAY">>, nonce = Nonce}) ->
+	Reply = #sbt_message{type = <<"WAIT">>, nonce = Nonce},
 	{Miner, Reply};
-handle_message(Miner, M = #message{type = <<"INFO">>}) ->
+handle_message(Miner, M = #sbt_message{type = <<"INFO">>}) ->
 	?TTY(M),
 	{Miner, ok};
-handle_message(Miner, #message{type = <<"BEST">>}) ->
+handle_message(Miner, #sbt_message{type = <<"BEST">>}) ->
 	{Miner, ok};
-handle_message(Miner, #message{type = <<"DONE">>}) ->
+handle_message(Miner, #sbt_message{type = <<"DONE">>}) ->
 	{Miner, ok};
-handle_message(Miner, M = #message{type = <<"NACK">>}) ->
+handle_message(Miner, M = #sbt_message{type = <<"NACK">>}) ->
 	?TTY(M),
 	{Miner, ok};
-handle_message(Miner, M = #message{}) ->
+handle_message(Miner, M = #sbt_message{}) ->
 	?TTY({unknown, M}),
 	{Miner, ok}.
 
 
-epoch() ->
-	{M, S, _} = erlang:timestamp(),
-	M * 1000000 + S.
+log(Message) ->
+	log(<<>>, Message).
 
-
-coinbase(#miner{address = undefined}) ->
-	<<>>;
-coinbase(#miner{address = Address}) ->
-	String = <<"//SolarBit/SMM/A/">>,
-	Hash = crypto:hash(sha, Address),
-	<<3, 0:24, ?OP_DROP, (byte_size(String)), String/binary, ?OP_DROP,
-		(byte_size(Hash)), Hash/binary, ?OP_DROP, ?OP_RETURN, 0:64>>.
-
-
-get_local_ip() ->
-	{ok, L} = inet:getif(),
-	[IP] = [X || {X, _, _} <- L, X =/= {127, 0, 0, 1}],
-	IP.
+log(Prefix, #sbt_message{type = Type, nonce = Nonce, payload = <<>>}) ->
+	M = [Prefix, Type, " nonce:", integer_to_list(Nonce)],
+	Bin = iolist_to_binary(M),
+	?LOG(Bin);
+log(Prefix, #sbt_message{type = Type, nonce = Nonce, payload = Payload}) ->
+	M = [Prefix, Type, " nonce:", integer_to_list(Nonce), ", payload:", hex:encode(Payload)],
+	Bin = iolist_to_binary(M),
+	?LOG(Bin);
+log(_, Message) ->
+	?LOG(Message).

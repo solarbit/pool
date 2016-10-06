@@ -1,3 +1,6 @@
+% Copyright 2016 solarbit.cc <steve@solarbit.cc>
+% See MIT LICENSE
+
 -module(sbt_app).
 
 -include("solarbit.hrl").
@@ -11,7 +14,7 @@ start(normal, []) ->
 
 
 prep_stop(State) ->
-	% notify miners...
+	% notify miners...?
 	State.
 
 

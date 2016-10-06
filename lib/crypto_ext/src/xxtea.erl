@@ -1,20 +1,16 @@
-% Copyright 2016 solarbit.cc <steve@solarbit.cc>
-% See LICENSE
+% Copyright 2014-2016 solarbit.cc <steve@solarbit.cc>
+% See MIT LICENSE
 
 -module(xxtea).
 
+%@ref http://en.wikipedia.org/wiki/XXTEA
+%@ref https://tools.ietf.org/html/rfc2315#section-10.3
+
 -export([encode/2, encode/3, decode/2, decode/3]).
--export([test/0, test/1, test/3]).
+-export([test/0]).
 
 -define(DELTA, 16#9E3779B9).
 -define(INT32_MASK, 16#FFFFFFFF).
-
--define(TEST_KEY, <<"SolarBitSolarBit">>).
-
--compile(export_all).
-
-%@ref http://en.wikipedia.org/wiki/XXTEA
-%@ref https://tools.ietf.org/html/rfc2315#section-10.3
 
 
 encode(Key, Plaintext) ->
@@ -22,26 +18,23 @@ encode(Key, Plaintext) ->
 
 encode(Key, Plaintext, Endian) when byte_size(Plaintext) rem 4 == 0 ->
 	{V, K, Rounds} = get_args(Key, Endian, Plaintext),
-	V0 = encode0(V, K, Rounds, lists:last(V), ?DELTA),
+	V0 = encode(V, K, Rounds, lists:last(V), ?DELTA),
 	int32list_to_binary(Endian, V0);
 encode(Key, Plaintext, Endian) ->
-	% TODO: Zero-padding may not be the best scheme...
 	Pad = (4 - byte_size(Plaintext) rem 4) bsl 3,
 	encode(Key, <<Plaintext/binary, 0:Pad>>, Endian).
 
-
-encode0(V, K, Rounds, Z, Sum) when Rounds > 0 ->
+encode(V, K, Rounds, Z, Sum) when Rounds > 0 ->
 	E = (Sum bsr 2) band 3,
-	V0 = [Z0|_] = encode1(V, K, Z, Sum, E, 0, []),
-	encode0(lists:reverse(V0), K, Rounds - 1, Z0, Sum + ?DELTA);
-encode0(V, _K, 0, _Z, _Sum) ->
+	V0 = [Z0|_] = encode(V, K, Z, Sum, E, 0, []),
+	encode(lists:reverse(V0), K, Rounds - 1, Z0, Sum + ?DELTA);
+encode(V, _K, 0, _Z, _Sum) ->
 	V.
 
-
-encode1([H|T = [Y|_]], K, Z, Sum, E, P, Acc) ->
+encode([H|T = [Y|_]], K, Z, Sum, E, P, Acc) ->
 	Z0 = int32(H + mx(K, Z, Y, Sum, E, P)),
-	encode1(T, K, Z0, Sum, E, P + 1, [Z0|Acc]);
-encode1([H], K, Z, Sum, E, P, Acc)  ->
+	encode(T, K, Z0, Sum, E, P + 1, [Z0|Acc]);
+encode([H], K, Z, Sum, E, P, Acc)  ->
 	[int32(H + mx(K, Z, lists:last(Acc), Sum, E, P)) | Acc].
 
 
@@ -52,22 +45,20 @@ decode(_Key, Ciphertext, _Endian) when byte_size(Ciphertext) < 8 ->
 	Ciphertext;
 decode(Key, Ciphertext, Endian) ->
 	{V, K, Rounds} = get_args(Key, Endian, Ciphertext),
-	V0 = decode0(V, K, Rounds, hd(V), Rounds * ?DELTA),
+	V0 = decode(V, K, Rounds, hd(V), Rounds * ?DELTA),
 	int32list_to_binary(Endian, V0).
 
-
-decode0(V, K, Rounds, Y, Sum) when Rounds > 0 ->
+decode(V, K, Rounds, Y, Sum) when Rounds > 0 ->
 	E = (Sum bsr 2) band 3,
-	V0 = [Y0|_] = decode1(lists:reverse(V), K, Y, Sum, E, length(V) - 1, []),
-	decode0(V0, K, Rounds - 1, Y0, Sum - ?DELTA);
-decode0(V, _K, 0, _Y, 0) ->
+	V0 = [Y0|_] = decode(lists:reverse(V), K, Y, Sum, E, length(V) - 1, []),
+	decode(V0, K, Rounds - 1, Y0, Sum - ?DELTA);
+decode(V, _K, 0, _Y, 0) ->
 	V.
 
-
-decode1([H|T = [Z|_]], K, Y, Sum, E, P, Acc) ->
+decode([H|T = [Z|_]], K, Y, Sum, E, P, Acc) ->
 	Y0 = int32(H - mx(K, Z, Y, Sum, E, P)),
-	decode1(T, K, Y0, Sum, E, P - 1, [Y0|Acc]);
-decode1([H], K, Y, Sum, E, P = 0, Acc)  ->
+	decode(T, K, Y0, Sum, E, P - 1, [Y0|Acc]);
+decode([H], K, Y, Sum, E, P = 0, Acc)  ->
 	[int32(H - mx(K, lists:last(Acc), Y, Sum, E, P))|Acc].
 
 
@@ -85,6 +76,16 @@ get_args(Key, Endian, Bin) ->
 	{V, K, Rounds}.
 
 
+int32(X) ->
+	X band ?INT32_MASK.
+
+
+int32list_to_binary(little, List) ->
+	<< <<X:32/little>> || X <- List>>;
+int32list_to_binary(big, List) ->
+	<< <<X:32>> || X <- List>>.
+
+
 int32list_from_binary(Endian, Bin) ->
 	int32list_from_binary(Endian, Bin, []).
 
@@ -96,18 +97,8 @@ int32list_from_binary(_, <<>>, Acc) ->
 	lists:reverse(Acc).
 
 
-int32list_to_binary(little, List) ->
-	<< <<X:32/little>> || X <- List>>;
-int32list_to_binary(big, List) ->
-	<< <<X:32>> || X <- List>>.
-
-
-int32(X) ->
-	X band ?INT32_MASK.
-
-
-test(Key, Text) ->
-	hex:encode(encode(Key, Text)).
+-define(TEST, 0).
+-ifdef(TEST).
 
 test() ->
 	Vectors = [
@@ -136,14 +127,8 @@ test() ->
 	[test(hex:decode(Key), hex:decode(Text), hex:decode(Cipher)) || {Key, Text, _NBOCipher, Cipher} <- Vectors],
 	ok.
 
-
-test(Text) ->
-	Cipher = encode(?TEST_KEY, Text),
-	Size = byte_size(Text),
-	<<Text:Size/binary, _/binary>> = decode(?TEST_KEY, Cipher),
-	{ok, hex:encode(Cipher)}.
-
-
 test(Key, Text, Cipher) ->
 	Cipher = encode(Key, Text),
 	Text = decode(Key, Cipher).
+
+-endif.

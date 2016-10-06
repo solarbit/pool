@@ -1,16 +1,37 @@
 % solarbit.hrl
+% Copyright 2016 solarbit.cc <steve@solarbit.cc>
+% See LICENSE
 
+-ifndef(TTY).
 -define(TTY(Term), io:format(user, "[~p:~p] ~p~n", [?MODULE, ?LINE, Term])).
--define(LOG(Term), sbt_log_srv:write(Term)).
+-endif.
+
+-ifndef(is_record).
+-define(is_record(X), (is_tuple(X) andalso is_atom(element(1, X)))).
+-endif.
+
+-define(LOG(Term), sbt_log_srv:write(?MODULE, Term)).
 
 -define(UDP_PORT, 21314). % <<"SB">>
 
--define(SBT_MAGIC, 1397574912).
--define(SBT_VERSION, <<0, 3, 0, $A>>).
+-define(SBT_MAGIC, 1397574912). % <<"SMM", 0>>
+-define(SBT_VERSION, <<0, 4, 0, $A>>). % semver: 0.4.0-A
 
--record(message, {magic = ?SBT_MAGIC, version = ?SBT_VERSION, nonce = 1, type, payload = <<>>}).
+-define(NULL_XXTEA_KEY, <<"SolarBitSolarBit">>). % <<0:128>>).
 
--record(miner, {ip, port, address, time}).
+-define(COINBASE_ID, <<"//SolarBit/SMM/A/">>).
+-define(SBT_BTC_CLIENT, <<"/SolarBit:0.4.0-A/">>).
+
+-record(sbt_message, {magic = ?SBT_MAGIC, version = ?SBT_VERSION, nonce = 1, type, payload = <<>>}).
+
+-record(sbt_miner, {ip, port, address, key, time}).
+
+
+-define(DB_TABLES, [
+	{sbt_config, [key, value]},
+	{sbt_miner, record_info(fields, sbt_miner)}
+]).
+
 
 -define(TEST_BLOCK, <<1,0,0,0,234,141,253,92,14,35,8,200,179,166,115,97,93,250,242,143,169,3,156,
 	88,73,250,88,75,5,15,0,0,0,0,0,0,34,89,134,254,85,127,253,145,191,7,250,55,

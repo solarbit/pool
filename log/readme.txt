@@ -1,0 +1,1 @@
+Ensures the log directory
