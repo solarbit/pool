@@ -259,12 +259,15 @@ handle_message(Message, State) ->
 	{noreply, State}.
 
 
+log(Message) when is_binary(Message) ->
+	log([none, Message]);
 log([Prefix, Message]) ->
 	Bin = iolist_to_binary([prefix(Prefix), logf(Message)]),
 	?LOG(Bin);
-log(Message) -> % when is_binary(Message) ->
-	log({none, Message}).
-
+log(Other) ->
+	?TTY({other, Other}),
+	?LOG(Other).
+	
 
 prefix(none) -> "";
 prefix(in) -> "<= ";
