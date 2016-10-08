@@ -1,4 +1,4 @@
-% Copyright 2016 Steve Davis <steve@solarbit.cc>
+% Copyright 2014-2016 Steve Davis <steve@solarbit.cc>
 % See MIT LICENSE
 
 -module(btc_protocol).
@@ -27,8 +27,8 @@ decode0(All = <<?BITCOIN_MAGIC:32, Command:12/binary, PayloadLength:32/little,
 	_ ->
 		{ok, lists:reverse(Acc), fun(X) -> decode(X, All) end}
 	end;
-decode0(<<>>, Acc) ->
-	{ok, lists:reverse(Acc), fun decode/1}.
+decode0(Bin, Acc) ->
+	{ok, lists:reverse(Acc), fun(X) -> decode(X, Bin) end}.
 
 
 decode_payload(<<"version", 0:40>>, <<Version:32/little, Services:64/little, Timestamp:64/little,

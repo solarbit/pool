@@ -1,5 +1,8 @@
+% Copyright 2014-2016 Steve Davis <steve@solarbit.cc>
+% See MIT LICENSE
+
 % bitcoin_script.hrl
-% see: https://en.bitcoin.it/wiki/Script
+%@ref: https://en.bitcoin.it/wiki/Script
 
 % True=1 and False=0.
 

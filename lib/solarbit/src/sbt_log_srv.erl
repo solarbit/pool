@@ -26,48 +26,38 @@ write(Module, Message) when is_atom(Module) ->
 init([]) ->
 	FileName = code:lib_dir(solarbit) ++ "/../../log/pool.log",
 	{ok, File} = file:open(FileName, [append, raw]),
-	{ok, #{file => File, formatter => fun format/2}}.
+	{ok, #{file => File}}.
 
 
-handle_call(M, _From, State) ->
-	?TTY({call, M}),
+handle_call(_, _From, State) ->
 	{reply, ok, State}.
 
 
-handle_cast({log, Message}, State = #{file := File}) ->
-	ok = file:write(File, Message),
-	{noreply, State};
-handle_cast({log, Module, Message}, State = #{file := File, formatter := Format}) ->
-	Bin = Format(Module, Message),
+handle_cast({log, Module, Message}, State = #{file := File}) ->
+	Bin = format(Module, Message),
 	ok = file:write(File, Bin),
 	{noreply, State};
-handle_cast(stop, State) ->
+handle_cast(stop, State = #{file := File}) ->
+	file:close(File),
 	{stop, normal, State}.
 
 
-handle_info(Message, State = #{file := _File}) ->
-	% file:write(File, Message),
-	?TTY({info, Message}),
+handle_info(_Message, State) ->
 	{noreply, State}.
 
 
-code_change(OldVsn, State, Extra) ->
-	?TTY({code_change, OldVsn, Extra}),
+code_change(_OldVsn, State, _Extra) ->
 	State.
 
 
-terminate(Reason, _State = #{file := File}) ->
+terminate(_Reason, _State = #{file := File}) ->
 	file:close(File),
-	?TTY({terminate, Reason}),
 	ok.
 
 
 format(Prefix, Message) when is_binary(Message) ->
 	String = atom_to_list(Prefix),
 	[dttm:timestamp(), " [", String, "] ", Message, $\n];
-format(Prefix, Message) when is_list(Message) ->
-	Bin = iolist_to_binary(Message),
-	format(Prefix, Bin);
 format(Prefix, Message) ->
 	Bin = io_lib:format("~p", [Message]),
 	format(Prefix, Bin).

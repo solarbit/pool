@@ -1,6 +1,7 @@
+% Copyright 2014-2016 Steve Davis <steve@solarbit.cc>
+% See MIT LICENSE
+
 % bitcoin.hrl
-% Copyright 2016 solarbit.cc <steve@solarbit.cc>
-% See LICENSE
 
 -ifndef(TTY).
 -define(TTY(Term), io:format(user, "[~p:~p] ~p~n", [?MODULE, ?LINE, Term])).

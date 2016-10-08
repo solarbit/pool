@@ -34,7 +34,12 @@ start_link([]) ->
 		{ok, Pid} ->
 			mnesia:wait_for_tables(mnesia:system_info(tables), ?DB_TIMEOUT),
 			Result = ensure_tables(?DB_TABLES),
-			?LOG(Result),
+			case Result of
+			{ok, Tables, []} when is_list(Tables) ->
+				?LOG(io_lib:format("Tables: ~p", [lists:sort(Tables)]));
+			_ ->
+				?LOG(Result)
+			end,
 			{ok, Pid};
 		Error ->
 			Error

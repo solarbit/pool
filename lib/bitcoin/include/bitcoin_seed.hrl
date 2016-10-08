@@ -1,3 +1,6 @@
+% Copyright 2014-2016 Steve Davis <steve@solarbit.cc>
+% See MIT LICENSE
+
 -define(BITCOIN_SEED_IPS,
 [
 	"46.105.106.126",		% 0x7e6a692e

@@ -1,4 +1,4 @@
-% Copyright 2016 solarbit.cc <steve@solarbit.cc>
+% Copyright 2014-2016 Steve Davis <steve@solarbit.cc>
 % See MIT LICENSE
 
 -module(bitcoin).
@@ -15,33 +15,39 @@ address(Wif) ->
 	btc_crypto:generate_address(Wif).
 
 
--define(BLOCK_DIR, "/Users/stevedavis/Library/Application Support/Bitcoin/blocks/").
-
+%% NOTE: OSX/MacOS ONLY
+-define(BLOCK_DIR, os:getenv("HOME") ++ "/Library/Application Support/Bitcoin/blocks/").
 
 extract(File) ->
 	extract(File, 1).
 
 extract(File, Limit) ->
 	Path = ?BLOCK_DIR ++ File,
-	?TTY(Path),
-	{ok, Fd} = file:open(Path, [binary, read]),
-	{ok, Blocks} = extract_blocks(Fd, ?BITCOIN_MAGIC, 1, Limit, []),
-	ok = file:close(Fd),
-	{ok, Blocks}.
+	case filelib:is_regular(Path) of
+	true ->
+		{ok, Fd} = file:open(Path, [binary, read]),
+		{ok, Blocks} = extract_blocks(Fd, Limit, []),
+		ok = file:close(Fd),
+		{ok, Blocks};
+	false ->
+		{invalid_path, Path}
+	end.
 
-
-extract_blocks(Fd, Magic, Count, Max, Acc) when Count =< Max ->
+extract_blocks(Fd, Count, Acc) when Count > 0 ->
 	case file:read(Fd, 8) of
-	{ok, <<Magic:4/binary, BlockSize:32/little>>} ->
+	{ok, <<?BITCOIN_MAGIC:32, BlockSize:32/little>>} ->
 		{ok, Bin} = file:read(Fd, BlockSize),
 		Block = btc_codec:decode_block(Bin),
-		extract_blocks(Fd, Magic, Count + 1, Max, [Block|Acc]);
+		extract_blocks(Fd, Count - 1, [Block|Acc]);
 	{ok, <<0:64>>} ->
+		{ok, lists:reverse(Acc)};
+	{ok, Other} ->
+		?TTY({unexpected, Other}),
 		{ok, lists:reverse(Acc)};
 	eof ->
 		{ok, lists:reverse(Acc)};
 	Error ->
-		{error, Error}
+		Error
 	end;
-extract_blocks(_, _, _, _, Acc) ->
+extract_blocks(_, _, Acc) ->
 	{ok, lists:reverse(Acc)}.

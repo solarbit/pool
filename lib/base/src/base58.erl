@@ -1,4 +1,4 @@
-% Copyright 2016 solarbit.cc <steve@solarbit.cc>
+% Copyright 2016 Steve Davis <steve@solarbit.cc>
 % See MIT LICENSE
 
 -module(base58).

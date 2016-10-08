@@ -1,5 +1,5 @@
-% Copyright 2014-2016 solarbit.cc <steve@solarbit.cc>
-% See LICENSE
+% Copyright 2016 Steve Davis <steve@solarbit.cc>
+% See MIT LICENSE
 
 -module(dttm).
 
@@ -74,6 +74,8 @@ to_seconds(DTTM = {_, _}) ->
 to_seconds(Date = {_, _, _}) ->
 	calendar:datetime_to_gregorian_seconds({Date, {0,0,0}}) - ?UNIX_EPOCH_ZERO.
 
+datetime() ->
+	{date(), time()}.
 
 datetime(Seconds) ->
 	datetime(unix, Seconds).

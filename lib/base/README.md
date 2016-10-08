@@ -5,4 +5,4 @@ Provides:
 - `dttm` Date and Time functions
 - `hex` Hexadecimal encoding and decoding
 - `json` Efficient JSON codec
-- `user_default` Helpful REPL functions
+- `netutil` Network utility functions

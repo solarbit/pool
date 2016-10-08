@@ -8,7 +8,7 @@
 -compile(export_all).
 
 -export([start/0, stop/0]).
--export([info/1, key/1, state/0, send/2, coinbase/0, connect/1]).
+-export([info/0, key/1, state/0, send/2, coinbase/0, connect/1]).
 
 
 start() ->
@@ -27,10 +27,10 @@ key(Key) when is_binary(Key) ->
 	sbt_pool_srv:set_key(Key).
 
 
-info(btc) ->
-	sbt_btc_srv:info();
-info(sbt) ->
-	sbt_pool_srv:miners().
+info() -> [
+	sbt_pool_srv:miners(),
+	sbt_btc_srv:info()
+].
 
 
 state() -> [

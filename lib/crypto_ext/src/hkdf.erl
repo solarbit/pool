@@ -1,10 +1,10 @@
-% Copyright 2014-2016 solarbit.cc <steve@solarbit.cc>
+% Copyright 2014-2016 Steve Davis <steve@solarbit.cc>
 % See MIT LICENSE
 
 -module(hkdf).
 
 % HMAC-based Extract-and-Expand Key Derivation Function (HKDF)
-% @ref https://tools.ietf.org/html/rfc5869
+%@ref https://tools.ietf.org/html/rfc5869
 
 -compile(export_all).
 

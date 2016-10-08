@@ -2,13 +2,7 @@
 % Copyright 2016 solarbit.cc <steve@solarbit.cc>
 % See LICENSE
 
--ifndef(TTY).
--define(TTY(Term), io:format(user, "[~p:~p] ~p~n", [?MODULE, ?LINE, Term])).
--endif.
-
--ifndef(is_record).
--define(is_record(X), (is_tuple(X) andalso is_atom(element(1, X)))).
--endif.
+-include_lib("base/include/base.hrl").
 
 -define(LOG(Term), sbt_log_srv:write(?MODULE, Term)).
 

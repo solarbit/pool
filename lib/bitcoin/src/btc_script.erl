@@ -1,4 +1,4 @@
-% Copyright 2016 Steve Davis <steve@solarbit.cc>
+% Copyright 2014-2016 Steve Davis <steve@solarbit.cc>
 % See MIT LICENSE
 
 -module(btc_script).

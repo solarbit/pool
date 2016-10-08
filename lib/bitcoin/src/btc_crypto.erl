@@ -1,4 +1,4 @@
-% Copyright 2014-2016 SolarBit.cc <steve@solarbit.cc>
+% Copyright 2014-2016 Steve Davis <steve@solarbit.cc>
 % See MIT LICENSE
 
 -module(btc_crypto).
@@ -42,13 +42,13 @@ compressed_public_key_prefix_byte(_) ->
 	3.
 
 
-create_address() ->
+generate_address() ->
 	{Public, Private} = generate_keypair(),
 	Address = encode_address(Public),
 	Wif = encode_wif(Private),
 	#btc_address{id = Address, public_key = Public, wif = Wif, private_key = Private}.
 
-create_address(Wif) ->
+generate_address(Wif) ->
 	Private = decode_wif(Wif),
 	{Public, Private} = generate_keypair(Private),
 	Address = encode_address(Public),
@@ -90,6 +90,16 @@ generate_keypair() ->
 
 generate_keypair(PrivateKey) ->
 	crypto:generate_key(ecdh, ?ELLIPTIC_CURVE, PrivateKey).
+
+
+encrypt(ClearText, YourPublicKey, MyPrivateKey) ->
+	<<IV:16/binary, SecretKey:16/binary>> = crypto:compute_key(ecdh, YourPublicKey, MyPrivateKey, ?ELLIPTIC_CURVE),
+	crypto:block_encrypt(aes_cfb128, SecretKey, IV, ClearText).
+
+
+decrypt(ClearText, YourPublicKey, MyPrivateKey) ->
+	<<IV:16/binary, SecretKey:16/binary>> = crypto:compute_key(ecdh, YourPublicKey, MyPrivateKey, ?ELLIPTIC_CURVE),
+	crypto:block_decrypt(aes_cfb128, SecretKey, IV, ClearText).
 
 
 sign(ClearText, PrivateKey) ->

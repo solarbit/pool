@@ -3,3 +3,4 @@
 *.dump
 *.log
 db.*
+lib/support
