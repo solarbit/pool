@@ -71,16 +71,16 @@ decode_block(<<Header:80/binary, Bin/binary>>) ->
 	<<Id:256/little>> = btc_crypto:hash256(Header),
 	<<Version:32/little, PrevHash:256/little, RootHash:256/little,
 		Time:32/little, Bits:32/little, Nonce:32/little>> = Header,
-	{NumTx, Bin0} = decode_integer(Bin),
-	case NumTx > 0 of
-	true ->
-		{Coinbase, BlockHeight, Bin1} = decode_coinbase(Bin0),
-		Temp = decode_transactions(Bin1, NumTx - 1, []), % TODO: Temp keep coinbase in TX list
-		Txns = [Coinbase|Temp];
-	false ->
+	case Bin of
+	<<>> ->
 		BlockHeight = unknown,
 		Coinbase = undefined,
-		Txns = []
+		Txns = [];
+	_ ->
+		{NumTx, Bin0} = decode_integer(Bin),
+		{Coinbase, BlockHeight, Bin1} = decode_coinbase(Bin0),
+		Temp = decode_transactions(Bin1, NumTx - 1, []), % TODO: Temp keep coinbase in TX list
+		Txns = [Coinbase|Temp]
 	end,
 	#btc_block{
 		id = Id,

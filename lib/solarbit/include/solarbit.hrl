@@ -4,8 +4,7 @@
 
 -include_lib("base/include/base.hrl").
 
--define(LOG(Term), io:format("~p~n", [Term])).
-%sbt_log_srv:write(?MODULE, Term)).
+-define(LOG(Term), sbt_log_srv:write(?MODULE, Term)).
 
 -define(UDP_PORT, 21314). % <<"SB">>
 

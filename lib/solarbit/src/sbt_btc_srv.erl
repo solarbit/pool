@@ -135,7 +135,7 @@ code_change(OldVsn, State, Extra) ->
 terminate(normal, _State) ->
 	ok;
 terminate(Reason, _State) ->
-	?TTY(Reason),
+	?TTY({terminate, Reason}),
 	ok.
 
 
@@ -170,7 +170,7 @@ do_connect([IP|T]) ->
 		{ok, {Host, Port}} = inet:peername(Socket),
 		{ok, {Host, Port}, Socket};
 	{error, Reason} ->
-		log(io_lib:format("~p ~p", [{IP, Port}, Reason])),
+		log([local, io_lib:format("{~p, ~p} ~p", [IP, Port, Reason])]),
 		do_connect(T)
 	end;
 do_connect([]) ->
@@ -194,12 +194,10 @@ maybe_close_socket(Socket) ->
 
 
 get_host_list(local) ->
-	[loopback, {127, 0, 0, 1}, {0, 0, 0, 0}, netutil:get_local_ip()];
+	[loopback, {127, 0, 0, 1}, {0, 0, 0, 0}];
 get_host_list(remote) ->
 	List = [{rand:uniform(), parse_ip(N)} || N <- ?SEED_BITNODES_IO],
-	[X || {_, X} <- lists:sort(List)];
-get_host_list(_) ->
-	[].
+	[X || {_, X} <- lists:sort(List)].
 
 
 parse_ip(String) when is_list(String) ->
@@ -245,10 +243,10 @@ handle_message(#btc_inv{vectors = VectorList}, State = #{unconfirmed := TxList})
 handle_message(Block = #btc_block{height = BlockHeight, txns = Txns}, State = #{unconfirmed := TxList, notify := Notify}) ->
 	ConfirmedTx = [X || #btc_tx{id = X} <- Txns],
 	TxList0 = TxList -- ConfirmedTx,
+	?TTY({new_block, BlockHeight, dttm:timestamp()}),
 	Log = io_lib:format("<= BLOCK height:~p confirmed:~p unconfirmed[was:~p now:~p]",
 		[BlockHeight, length(ConfirmedTx), length(TxList), length(TxList0)]),
-	?TTY({new_block, BlockHeight, dttm:timestamp()}),
-	log(Log),
+	log([none, Log]),
 	[Pid ! {block, Block#btc_block{txns = []}, TxList0} || Pid <- Notify],
 	{noreply, State#{unconfirmed => TxList0, block_height => BlockHeight}};
 handle_message(#btc_addr{addr_list = List}, State) ->
@@ -262,12 +260,10 @@ handle_message(Message, State) ->
 log(Message) when is_binary(Message) ->
 	log([none, Message]);
 log([Prefix, Message]) ->
-	Bin = iolist_to_binary([prefix(Prefix), logf(Message)]),
-	?LOG(Bin);
+	?LOG([prefix(Prefix), logf(Message)]);
 log(Other) ->
-	?TTY({other, Other}),
-	?LOG(Other).
-	
+	?LOG(iolist_to_binary(Other)).
+
 
 prefix(none) -> "";
 prefix(in) -> "<= ";
@@ -287,7 +283,7 @@ logf(#btc_getdata{vectors = Vectors}) ->
 	Vectors0 = [{Type, hex:encode(<<Number:256/little>>)} || {Type, Number} <- Vectors],
 	Message = io_lib:format("~p", [Vectors0]),
 	["GETDATA ", Message];
-logf(Message) when is_binary(Message) orelse ?is_string(Message) ->
+logf(Message) when is_binary(Message); is_list(Message) ->
 	Message;
 logf(Message) ->
 	io_lib:format("~p", [Message]).

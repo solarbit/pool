@@ -70,13 +70,13 @@ handle_info({udp, Socket, Host, Port, Packet}, State = #{miners := Miners}) ->
 	log([in, Request]),
 	case handle_message(Request, Miner) of
 	{reply, Response, Miner0} ->
-		?LOG([out, Response]),
+		log([out, Response]),
 		Reply = sbt_codec:encode(Key, Response),
 		ok = gen_udp:send(Socket, Host, Port, Reply);
 	{noreply, Miner0} ->
 		ok
 	end,
-	Miners0 = maps:put(Host, Miner0, Miners),
+	Miners0 = maps:put(Host, Miner0#sbt_miner{time = dttm:now()}, Miners),
 	{noreply, State#{miners => Miners0}};
 handle_info({block, PreviousBlockHeader, Txns}, State = #{miners := Miners}) ->
 	?TTY({block_signal, PreviousBlockHeader, length(Txns)}),
@@ -99,7 +99,6 @@ terminate(Reason, _State = #{socket := Socket}) ->
 	ok.
 
 
-% DONE = 80b34dd2.
 handle_message(#sbt_message{type = <<"HELO">>, nonce = _Nonce}, Miner) ->
 	Reply = #sbt_message{type = <<"SYNC">>, nonce = dttm:now()},
 	{reply, Reply, Miner};
@@ -124,6 +123,7 @@ handle_message(M = #sbt_message{}, Miner) ->
 	{noreply, Miner}.
 
 
+% TODO: Check versioning and do correct calculation of bits/difficulty
 send_mining_instruction({block, Last = #btc_block{}, _Txns}, _Miners) ->
 	Next = #btc_block{
 		height = Last#btc_block.height + 1,
@@ -139,22 +139,24 @@ send_mining_instruction({block, Last = #btc_block{}, _Txns}, _Miners) ->
 	?TTY(hex:encode(btc_codec:encode(Next))),
 	ok.
 
+
 log(Message) when is_binary(Message) ->
-	log([none, Message]);
+	?LOG(Message);
 log([Prefix, Message]) ->
-	Bin = iolist_to_binary([prefix(Prefix), logf(Message)]),
-	?LOG(Bin).
+	?LOG([prefix(Prefix), logf(Message)]).
+
 
 prefix(none) -> "";
 prefix(in) -> "<= ";
 prefix(out) -> "=> ";
 prefix(_) -> "== ".
 
+
 logf(#sbt_message{type = Type, nonce = Nonce, payload = <<>>}) ->
 	[Type, " nonce:", integer_to_list(Nonce)];
 logf(#sbt_message{type = Type, nonce = Nonce, payload = Payload}) ->
 	[Type, " nonce:", integer_to_list(Nonce), " payload:", hex:encode(Payload)];
-logf(Message) when is_binary(Message) orelse ?is_string(Message) ->
+logf(Message) when is_binary(Message); is_list(Message) ->
 	Message;
 logf(Message) ->
 	io_lib:format("~p", [Message]).

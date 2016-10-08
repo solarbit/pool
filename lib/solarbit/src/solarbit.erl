@@ -64,3 +64,7 @@ send(Miner, mine) ->
 	sbt_pool_srv:send(Miner, #sbt_message{type = <<"MINE">>, payload = Payload});
 send(Miner, test) ->
 	sbt_pool_srv:send(Miner, #sbt_message{type = <<"TEST">>, payload = ?TEST_BLOCK}).
+
+
+log(M) ->
+	?LOG(M).

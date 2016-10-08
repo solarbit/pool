@@ -19,23 +19,25 @@ stop() ->
 	gen_server:cast(?MODULE, stop).
 
 
-write(Module, Message) when is_atom(Module) ->
-	gen_server:cast(?MODULE, {log, Module, Message}).
+write(Module, Message) when is_atom(Module), is_binary(Message) ->
+	gen_server:cast(?MODULE, {log, Module, Message});
+write(Module, Message) when is_list(Message) ->
+	write(Module, iolist_to_binary(Message)).
 
 
 init([]) ->
 	FileName = code:lib_dir(solarbit) ++ "/../../log/pool.log",
-	{ok, File} = file:open(FileName, [append, raw]),
+	{ok, File} = file:open(FileName, [write, raw]),
 	{ok, #{file => File}}.
 
 
-handle_call(_, _From, State) ->
+handle_call(_Message, _From, State) ->
 	{reply, ok, State}.
 
 
 handle_cast({log, Module, Message}, State = #{file := File}) ->
-	Bin = format(Module, Message),
-	ok = file:write(File, Bin),
+	Out = [dttm:timestamp(), " [", atom_to_list(Module), "] ", Message, $\n],
+	ok = file:write(File, Out),
 	{noreply, State};
 handle_cast(stop, State = #{file := File}) ->
 	file:close(File),
@@ -53,11 +55,3 @@ code_change(_OldVsn, State, _Extra) ->
 terminate(_Reason, _State = #{file := File}) ->
 	file:close(File),
 	ok.
-
-
-format(Prefix, Message) when is_binary(Message) ->
-	String = atom_to_list(Prefix),
-	[dttm:timestamp(), " [", String, "] ", Message, $\n];
-format(Prefix, Message) ->
-	Bin = io_lib:format("~p", [Message]),
-	format(Prefix, Bin).
