@@ -67,8 +67,9 @@ handle_info({udp, Socket, Host, Port, Packet}, State = #{miners := Miners}) ->
 	Miner = maps:get(Host, Miners, #sbt_miner{ip = Host, port = Port, key = ?NULL_XXTEA_KEY}),
 	Key = Miner#sbt_miner.key,
 	Request = sbt_codec:decode(Key, Packet),
-	log([in, Request]),
-	case handle_message(Request, Miner) of
+	Request0 = Request#sbt_message{host = Host},
+	log([in, Request0]),
+	case handle_message(Request0, Miner) of
 	{reply, Response, Miner0} ->
 		log([out, Response]),
 		Reply = sbt_codec:encode(Key, Response),
@@ -78,9 +79,8 @@ handle_info({udp, Socket, Host, Port, Packet}, State = #{miners := Miners}) ->
 	end,
 	Miners0 = maps:put(Host, Miner0#sbt_miner{time = dttm:now()}, Miners),
 	{noreply, State#{miners => Miners0}};
-handle_info({block, PreviousBlockHeader, Txns}, State = #{miners := Miners}) ->
-	?TTY({block_signal, PreviousBlockHeader, length(Txns)}),
-	send_mining_instruction({block, PreviousBlockHeader, Txns}, Miners),
+handle_info({block_found, PreviousBlockHeader, Txns}, State) ->
+	send_mining_instruction({block, PreviousBlockHeader, Txns}, State),
 	{noreply, State};
 handle_info(Message, State) ->
 	?TTY({handle_info, Message}),
@@ -124,9 +124,8 @@ handle_message(M = #sbt_message{}, Miner) ->
 
 
 % TODO: Check versioning and do correct calculation of bits/difficulty
-send_mining_instruction({block, Last = #btc_block{}, _Txns}, _Miners) ->
+send_mining_instruction({block, Last = #btc_block{}, Txns}, #{socket := Socket, miners := Miners}) ->
 	Next = #btc_block{
-		height = Last#btc_block.height + 1,
 		version = Last#btc_block.version,
 		prev_block = Last#btc_block.id,
 		merkle_root = 0,
@@ -136,7 +135,20 @@ send_mining_instruction({block, Last = #btc_block{}, _Txns}, _Miners) ->
 		coinbase = undefined,
 		txns = []
 	},
-	?TTY(hex:encode(btc_codec:encode(Next))),
+	BlockHeight = <<(Last#btc_block.height + 1):32/little>>,
+	BlockHeader = btc_codec:encode(Next),
+	% TODO: Better mempool selection
+	NextTxns = lists:sublist(lists:reverse(Txns), 1000),
+	TxHashes = [<<X:256>> || X <- NextTxns],
+	{_Root, Path} = btc_crypto:merkle_root([<<0:256>>|TxHashes]),
+	PathLength = length(Path),
+	Path0 = list_to_binary(Path),
+	MiningPayload = <<BlockHeight/binary, BlockHeader/binary, PathLength, Path0/binary>>,
+	Message = #sbt_message{type = <<"MINE">>, nonce = dttm:now(), payload = MiningPayload},
+	log([out, Message]),
+	[gen_udp:send(Socket, IP, Port, sbt_codec:encode(Key, Message))
+		|| #sbt_miner{ip = IP, port = Port, key = Key}
+		<- maps:values(Miners)],
 	ok.
 
 
@@ -152,8 +164,15 @@ prefix(out) -> "=> ";
 prefix(_) -> "== ".
 
 
-logf(#sbt_message{type = Type, nonce = Nonce, payload = <<>>}) ->
-	[Type, " nonce:", integer_to_list(Nonce)];
+logf(#sbt_message{host = Host, type = Type, nonce = Nonce, payload = <<>>}) ->
+	[Type, " from:", io_lib:format("~p", [Host]), " nonce:", integer_to_list(Nonce)];
+logf(#sbt_message{host = Host, type = <<"NODE">>, nonce = Nonce, payload = Payload}) ->
+	[<<"NODE">>, " nonce:", integer_to_list(Nonce), " from:", io_lib:format("~p", [Host]), " address:", Payload];
+logf(#sbt_message{host = Host, type = <<"INFO">>, nonce = MessageId, payload = Payload}) ->
+	<<Mode, Status, Tethered, Paused, Height:32/little, Nonce:32/little, Nonce2:32/little,
+		Best:32/binary, Time:32/little, Rate:64/float-little>> = Payload,
+	Info = io_lib:format("~p", [{{Mode, Status, Tethered, Paused}, Height, Nonce, Nonce2, hex:encode(Best), Time, Rate}]),
+	[<<"INFO">>, " nonce:", integer_to_list(MessageId), " from:", io_lib:format("~p", [Host]), " detail:", Info];
 logf(#sbt_message{type = Type, nonce = Nonce, payload = Payload}) ->
 	[Type, " nonce:", integer_to_list(Nonce), " payload:", hex:encode(Payload)];
 logf(Message) when is_binary(Message); is_list(Message) ->

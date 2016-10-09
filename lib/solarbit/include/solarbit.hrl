@@ -16,7 +16,7 @@
 -define(COINBASE_ID, <<"//SolarBit/SMM/A/">>).
 -define(SBT_BTC_CLIENT, <<"/SolarBit:0.4.0-A/">>).
 
--record(sbt_message, {magic = ?SBT_MAGIC, version = ?SBT_VERSION, nonce = 1, type, payload = <<>>}).
+-record(sbt_message, {host = localhost, magic = ?SBT_MAGIC, version = ?SBT_VERSION, nonce = 1, type, payload = <<>>}).
 
 -record(sbt_miner, {ip, port, address, key, time}).
 

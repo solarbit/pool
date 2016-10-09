@@ -1,1 +1,1 @@
-The database will be stored here
+Ensures the data directory

@@ -50,20 +50,19 @@ coinbase() ->
 	[{Host, sbt_pool_srv:coinbase(Miner)} || Miner = #sbt_miner{ip = Host} <- Miners].
 
 
-send(Message) ->
-	sbt_btc_srv:send(Message).
-
+ping() ->
+	sbt_btc_srv:ping().
 
 send(Miner, ping) ->
 	sbt_pool_srv:send(Miner, #sbt_message{type = <<"PING">>});
 send(Miner, stat) ->
 	sbt_pool_srv:send(Miner, #sbt_message{type = <<"STAT">>});
-send(Miner, mine) ->
+send(Miner, wait) ->
+	sbt_pool_srv:send(Miner, #sbt_message{type = <<"WAIT">>});
+send(Miner, test) ->
 	Hash = btc_crypto:hash256(<<"solarbit.cc">>),
 	Payload = <<431498:32/little, (?TEST_BLOCK)/binary, 1, Hash/binary>>,
-	sbt_pool_srv:send(Miner, #sbt_message{type = <<"MINE">>, payload = Payload});
-send(Miner, test) ->
-	sbt_pool_srv:send(Miner, #sbt_message{type = <<"TEST">>, payload = ?TEST_BLOCK}).
+	sbt_pool_srv:send(Miner, #sbt_message{type = <<"MINE">>, payload = Payload}).
 
 
 log(M) ->

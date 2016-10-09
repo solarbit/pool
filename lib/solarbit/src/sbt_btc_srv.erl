@@ -8,7 +8,7 @@
 -include_lib("bitcoin/include/bitcoin_seed.hrl").
 
 -export([start_link/1, stop/0]).
--export([connect/1, notify/1, send/1, info/0, state/0]).
+-export([connect/1, notify/1, ping/0, send/1, info/0, state/0]).
 
 -behaviour(gen_server).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, code_change/3, terminate/2]).
@@ -27,6 +27,10 @@ stop() ->
 
 connect(Type) ->
 	gen_server:cast(?MODULE, {connect, Type}).
+
+
+ping() ->
+	send(#btc_ping{nonce = btc_crypto:nonce()}).
 
 
 send(Message) ->
@@ -228,6 +232,9 @@ handle_message(M = #btc_ping{nonce = Nonce}, State = #{unconfirmed := TxList}) -
 	log(io_lib:format("MEMPOOL unconfirmed:~p", [length(TxList)])),
 	log([in, M]),
 	{reply, #btc_pong{nonce = Nonce}, State};
+handle_message(M = #btc_pong{nonce = _Nonce}, State) ->
+	log([in, M]),
+	{noreply, State};
 handle_message(#btc_inv{vectors = VectorList}, State = #{unconfirmed := TxList}) ->
 	NewTx = [X || {tx, X} <- VectorList],
 	TxList0 = NewTx ++ TxList,
@@ -243,11 +250,10 @@ handle_message(#btc_inv{vectors = VectorList}, State = #{unconfirmed := TxList})
 handle_message(Block = #btc_block{height = BlockHeight, txns = Txns}, State = #{unconfirmed := TxList, notify := Notify}) ->
 	ConfirmedTx = [X || #btc_tx{id = X} <- Txns],
 	TxList0 = TxList -- ConfirmedTx,
-	?TTY({new_block, BlockHeight, dttm:timestamp()}),
 	Log = io_lib:format("<= BLOCK height:~p confirmed:~p unconfirmed[was:~p now:~p]",
 		[BlockHeight, length(ConfirmedTx), length(TxList), length(TxList0)]),
 	log([none, Log]),
-	[Pid ! {block, Block#btc_block{txns = []}, TxList0} || Pid <- Notify],
+	[Pid ! {block_found, Block#btc_block{txns = []}, TxList0} || Pid <- Notify],
 	{noreply, State#{unconfirmed => TxList0, block_height => BlockHeight}};
 handle_message(#btc_addr{addr_list = List}, State) ->
 	log(io_lib:format("<= ADDR ~p", [List])),

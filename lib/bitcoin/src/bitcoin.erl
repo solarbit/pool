@@ -16,7 +16,7 @@ address(Wif) ->
 
 
 %% NOTE: OSX/MacOS ONLY
--define(BLOCK_DIR, os:getenv("HOME") ++ "/Library/Application Support/Bitcoin/blocks/").
+-define(BLOCK_DIR, os:getenv("HOME") ++ "/bitcoin/").
 
 extract(File) ->
 	extract(File, 1).
