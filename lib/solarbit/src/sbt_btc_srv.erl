@@ -14,7 +14,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, code_change/3, terminate/2]).
 
 -define(CONNECT_TIMEOUT, 5000).
--define(RECONNECT_TIMER, 600000). % 10 minute
+-define(RECONNECT_TIMER, 600000). % 10 minutes
 
 
 start_link([]) ->
@@ -146,12 +146,15 @@ terminate(Reason, _State) ->
 do_connect(Type, State = #{socket := OldSocket, timer := TimerRef}) ->
 	maybe_cancel_timer(TimerRef),
 	maybe_close_socket(OldSocket),
+	[sbt_db_srv:clear(X) || X <- [btc_tx, btc_block, btc_height]],
+	{ok, Decoder} = btc_protocol:init(),
+	State0 = State#{codec => Decoder, unconfirmed => []},
 	HostList = get_host_list(Type),
 	case do_connect(HostList) of
 	{ok, Host, Socket} ->
-		{ok, State#{socket => Socket, host => Host, timer => undefined}};
+		{ok, State0#{socket => Socket, host => Host, timer => undefined}};
 	{error, Reason, TimerRef0} ->
-		{error, Reason, State#{socket => undefined, host => undefined,  timer => TimerRef0}}
+		{error, Reason, State0#{socket => undefined, host => undefined,  timer => TimerRef0}}
 	end.
 
 
@@ -242,12 +245,14 @@ handle_message(#btc_inv{vectors = VectorList}, State = #{unconfirmed := TxList})
 	NewBlocks = [X || X = {block, _} <- VectorList],
 	case NewBlocks of
 	[] ->
-		{noreply, State0};
+		ok;
 	_ ->
-		log(io_lib:format("<= INV blocks:~p, txns:~p", [length(NewBlocks), length(TxList0)])),
-		{reply, #btc_getdata{vectors = NewBlocks}, State0}
-	end;
-handle_message(Block = #btc_block{height = BlockHeight, txns = Txns}, State = #{unconfirmed := TxList, notify := Notify}) ->
+		log(io_lib:format("<= INV blocks:~p, txns:~p", [length(NewBlocks), length(TxList0)]))
+	end,
+	{reply, #btc_getdata{vectors = VectorList}, State0};
+handle_message(Block = #btc_block{id = BlockId, height = BlockHeight, txns = Txns}, State = #{unconfirmed := TxList, notify := Notify}) ->
+	db:save({btc_block, BlockId, Block#btc_block{txns = []}}),
+	db:save({btc_height, BlockHeight, BlockId}),
 	ConfirmedTx = [X || #btc_tx{id = X} <- Txns],
 	TxList0 = TxList -- ConfirmedTx,
 	Log = io_lib:format("<= BLOCK height:~p confirmed:~p unconfirmed[was:~p now:~p]",
@@ -255,11 +260,21 @@ handle_message(Block = #btc_block{height = BlockHeight, txns = Txns}, State = #{
 	log([none, Log]),
 	[Pid ! {block_found, Block#btc_block{txns = []}, TxList0} || Pid <- Notify],
 	{noreply, State#{unconfirmed => TxList0, block_height => BlockHeight}};
+
+handle_message(Tx = #btc_tx{id = TxId, tx_in = TxIn}, State = #{unconfirmed := TxList}) ->
+	db:save({btc_tx, TxId, Tx}),
+	case lists:member(TxId, TxList) of
+	true ->
+		PreviousTxs = #btc_getdata{vectors = [{tx, X} || #btc_tx_in{outpoint_ref = X} <- TxIn]},
+		{reply, PreviousTxs, State};
+	false ->
+		{noreply, State}
+	end;
 handle_message(#btc_addr{addr_list = List}, State) ->
 	log(io_lib:format("<= ADDR ~p", [List])),
 	{noreply, State};
 handle_message(Message, State) ->
-	log(io_lib:format("<= ~p", [Message])),
+	log([in, Message]),
 	{noreply, State}.
 
 
@@ -289,6 +304,9 @@ logf(#btc_getdata{vectors = Vectors}) ->
 	Vectors0 = [{Type, hex:encode(<<Number:256/little>>)} || {Type, Number} <- Vectors],
 	Message = io_lib:format("~p", [Vectors0]),
 	["GETDATA ", Message];
+logf(#btc_notfound{vectors = Vectors}) ->
+	Message = io_lib:format("~p", [length(Vectors)]),
+	["NOTFOUND number:", Message];
 logf(Message) when is_binary(Message); is_list(Message) ->
 	Message;
 logf(Message) ->

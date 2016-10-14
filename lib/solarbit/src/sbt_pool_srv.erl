@@ -31,10 +31,6 @@ send(IP, Message) when is_tuple(IP) ->
 miners() ->
 	gen_server:call(?MODULE, miners).
 
-% TEMP
-state() ->
-	gen_server:call(?MODULE, state).
-
 
 init([]) ->
 	{ok, Socket} = gen_udp:open(?UDP_PORT, [binary]),
@@ -51,7 +47,8 @@ handle_call({send, IP, Message}, _From, State = #{socket := Socket, miners := Mi
 	Reply = gen_udp:send(Socket, IP, ?UDP_PORT, Packet),
 	{reply, Reply, State};
 handle_call(miners, _From, State = #{miners := Miners}) ->
-	{reply, {ok, maps:values(Miners)}, State};
+	{ok, Miners0} = db:all(sbt_miner),
+	{reply, {ok, Miners0}, State};
 handle_call(state, _From, State) ->
 	{reply, {ok, State}, State}.
 
@@ -64,7 +61,10 @@ handle_info({udp, _Socket, Host, _Port, _Packet}, State = #{local := Host}) ->
 	?TTY(loopback), % ignore messages from self
 	{noreply, State};
 handle_info({udp, Socket, Host, Port, Packet}, State = #{miners := Miners}) ->
-	Miner = maps:get(Host, Miners, #sbt_miner{ip = Host, port = Port, key = ?NULL_XXTEA_KEY}),
+	Default = #sbt_miner{ip = Host, port = Port, key = ?NULL_XXTEA_KEY},
+	_MinerDb = db:ensure(Default),
+%	?TTY({db_ensure, Result}),
+	Miner = maps:get(Host, Miners, Default),
 	Key = Miner#sbt_miner.key,
 	Request = sbt_codec:decode(Key, Packet),
 	Request0 = Request#sbt_message{host = Host},
@@ -77,7 +77,9 @@ handle_info({udp, Socket, Host, Port, Packet}, State = #{miners := Miners}) ->
 	{noreply, Miner0} ->
 		ok
 	end,
-	Miners0 = maps:put(Host, Miner0#sbt_miner{time = dttm:now()}, Miners),
+	Miner1 = Miner0#sbt_miner{time = dttm:now()},
+	db:save(Miner1),
+	Miners0 = maps:put(Host, Miner1, Miners),
 	{noreply, State#{miners => Miners0}};
 handle_info({block_found, PreviousBlockHeader, Txns}, State) ->
 	send_mining_instruction({block, PreviousBlockHeader, Txns}, State),
@@ -140,7 +142,7 @@ send_mining_instruction({block, Last = #btc_block{}, Txns}, #{socket := Socket, 
 	% TODO: Better mempool selection
 	NextTxns = lists:sublist(lists:reverse(Txns), 1000),
 	TxHashes = [<<X:256>> || X <- NextTxns],
-	{_Root, Path} = btc_crypto:merkle_root([<<0:256>>|TxHashes]),
+	{Root, Path} = btc_crypto:merkle_root([<<0:256>>|TxHashes]),
 	PathLength = length(Path),
 	Path0 = list_to_binary(Path),
 	MiningPayload = <<BlockHeight/binary, BlockHeader/binary, PathLength, Path0/binary>>,

@@ -67,3 +67,21 @@ send(Miner, test) ->
 
 log(M) ->
 	?LOG(M).
+
+
+test() ->
+	Key = <<"SolarBitSolarBit">>,
+	{ok, Socket} = gen_udp:open(?UDP_PORT, [binary]),
+	Message = #sbt_message{type = <<"HELO">>, nonce = dttm:now()},
+	?TTY({request, Message}),
+	Bin = sbt_codec:encode(Key, Message),
+	ok = gen_udp:send(Socket, "solarbit.cc", ?UDP_PORT, Bin),
+	receive
+	{udp, Socket, Host, Port, Packet} ->
+		?TTY({response, Host, Port, sbt_codec:decode(Key, Packet)});
+	Other ->
+		?TTY({other, Other})
+	after 5000 ->
+		timeout
+	end,
+	gen_udp:close(Socket).

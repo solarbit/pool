@@ -35,8 +35,8 @@ start_link([]) ->
 			mnesia:wait_for_tables(mnesia:system_info(tables), ?DB_TIMEOUT),
 			Result = ensure_tables(?DB_TABLES),
 			case Result of
-			{ok, Tables, []} when is_list(Tables) ->
-				?LOG(io_lib:format("Tables: ~p", [lists:sort(Tables)]));
+			{ok, Tables, Existing} when is_list(Tables) ->
+				?LOG(io_lib:format("Tables: ~p", [lists:sort(Tables ++ Existing)]));
 			_ ->
 				?LOG(Result)
 			end,
@@ -54,7 +54,8 @@ init([]) ->
 
 
 clear(Table) when is_atom(Table) ->
-	{atomic, ok} = mnesia:clear_table(Table).
+	{atomic, ok} = mnesia:clear_table(Table),
+	ok.
 
 
 ensure_tables(Tables) ->

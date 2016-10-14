@@ -32,15 +32,14 @@ encode(Key, #sbt_message{version = Version, nonce = Number, type = Type, payload
 
 encode_payload(_Key, <<>>) ->
 	<<>>;
-encode_payload(Key, Bin) when size(Bin) >= 4 ->
-	PayloadSize = byte_size(Bin),
-	Pad = 4 - (PayloadSize rem 4),
-	<<Padding:Pad/binary, _/binary>> = <<Pad, Pad, Pad, Pad>>,
-	xxtea:encode(Key, <<Bin/binary, Padding/binary>>);
 encode_payload(Key, Bin) ->
-	PayloadSize = 4 + byte_size(Bin),
-	Pad = 8 - (PayloadSize rem 4),
-	<<Padding:Pad/binary, _/binary>> = <<Pad, Pad, Pad, Pad, Pad, Pad, Pad>>,
+	PayloadSize = byte_size(Bin),
+	N = case byte_size(Bin) of
+		X when X < 4 -> 8;
+		_ -> 4
+		end,
+	Pad = N - (PayloadSize rem 4),
+	Padding = binary:copy(<<Pad>>, Pad),
 	xxtea:encode(Key, <<Bin/binary, Padding/binary>>).
 
 

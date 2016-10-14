@@ -23,7 +23,10 @@
 
 -define(DB_TABLES, [
 	{sbt_config, [key, value]},
-	{sbt_miner, record_info(fields, sbt_miner)}
+	{sbt_miner, record_info(fields, sbt_miner)},
+	{btc_height, [height, block_key]},
+	{btc_block, [key, value]},
+	{btc_tx, [key, value]}
 ]).
 
 

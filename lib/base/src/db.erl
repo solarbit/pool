@@ -117,9 +117,10 @@ ensure(Record) when ?is_record(Record) ->
     T = fun () ->
 			case mnesia:wread({Table, Key}) of
 			[] ->
-				mnesia:write(Record);
-			_ ->
-				ok
+				ok = mnesia:write(Record),
+				Record;
+			[Record0] ->
+				Record0
 			end
 		end,
     {atomic, Result} = mnesia:transaction(T),
