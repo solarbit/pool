@@ -46,17 +46,23 @@
 
 -define(IPV4_FLAG, 65535).
 
+% base difficulty hex: 0x00000000FFFF0000000000000000000000000000000000000000000000000000
+-define(BASE_DIFFICULTY, 26959535291011309493156476344723991336010898738574164086137773096960).
+
+% 000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f
+-define(GENESIS_BLOCK, 10628944869218562084050143519444549580389464591454674019345556079).
+
 % DATA
 -record(btc_address, {id, public_key, wif, private_key}).
 -record(btc_netaddr, {time, services = ?NODE_NONE, ip = {0, 0, 0, 0}, port = ?BITCOIN_PORT}).
-% -record(btc_outpoint, {hash, index}).
-% TODO: what is the mapping needed here?
-% -record(btc_blockchain, {id, previous_id, data}).
-%-record(btc_block_header, {version, prev_block, merkle_root, timestamp, bits, nonce, txn_count}).
+
 -record(btc_block, {id, height, version, prev_block, merkle_root, timestamp, bits, nonce, coinbase, txns}).
 -record(btc_tx, {id, block_id, version, tx_in = [], tx_out = [], lock_time = 0}).
 -record(btc_tx_in, {outpoint_ref, outpoint_index, sig_script, sequence = ?DEFAULT_TX_INPUT_SEQUENCE}).
 -record(btc_tx_out, {value, pk_script}).
+
+-record(btc_utxo_key, {outpoint_ref, outpoint_index}).
+-record(btc_utxo, {key, value}).
 
 % PROTOCOL
 -record(btc_version, {
@@ -75,8 +81,8 @@
 -record(btc_inv, {vectors = []}).
 -record(btc_getdata, {vectors = []}).
 -record(btc_notfound, {vectors = []}).
--record(btc_getblocks, {version, block_locator_hashes = [], hash_stop = 0}).
--record(btc_getheaders, {version, block_locator_hashes = [], hash_stop = 0}).
+-record(btc_getblocks, {version = ?BITCOIN_VERSION, block_locator_hashes = [], hash_stop = 0}).
+-record(btc_getheaders, {version = ?BITCOIN_VERSION, block_locator_hashes = [], hash_stop = 0}).
 % btc_tx - already defined
 % btc_block - already defined
 -record(btc_headers, {headers = []}).

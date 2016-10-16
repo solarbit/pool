@@ -54,6 +54,7 @@ handle_call(state, _From, State) ->
 
 
 handle_cast(stop, State = #{socket := _Socket}) ->
+	log(<<"Stopping">>),
 	{stop, normal, State}.
 
 

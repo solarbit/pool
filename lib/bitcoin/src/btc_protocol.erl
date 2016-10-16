@@ -83,7 +83,7 @@ decode_payload(<<"getheaders", 0:16>>, Payload) ->
 	{BlockIds, <<HashStop:256>>} = decode_hashlist(Count, Bin0),
 	#btc_getheaders{version = Version, block_locator_hashes = BlockIds, hash_stop = HashStop};
 decode_payload(<<"tx", 0:80>>, Payload) ->
-	btc_codec:decode_transaction(Payload);
+	btc_codec:decode_tx(Payload);
 decode_payload(<<"block", 0:56>>, Payload) ->
 	btc_codec:decode_block(Payload);
 decode_payload(<<"headers", 0:40>>, Payload) ->

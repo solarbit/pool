@@ -7,32 +7,55 @@
 
 -compile(export_all).
 
-% base difficulty hex: 0x00000000FFFF0000000000000000000000000000000000000000000000000000
--define(BASE_DIFFICULTY, 26959535291011309493156476344723991336010898738574164086137773096960).
+
+get_bits(Target) ->
+	get_bits(<<Target:256>>, 32).
+
+get_bits(<<0, Bin/binary>>, Exponent) ->
+	get_bits(Bin, Exponent - 1);
+get_bits(<<Mantissa:24, _/binary>>, Exponent) ->
+	<<Bits:32>> = <<0:3, Exponent:5, Mantissa:24>>,
+	Bits.
 
 
-encode(B = #btc_block{}) ->
+get_target(Bits) when is_integer(Bits) ->
+	<<0:3, Exponent:5, Mantissa:24>> = <<Bits:32>>,
+	true = Exponent > 3,
+	ShiftCount = (Exponent - 3) bsl 3,
+	Mantissa bsl ShiftCount.
+
+
+get_difficulty(Bits) ->
+	?BASE_DIFFICULTY / get_target(Bits).
+
+
+encode(X = #btc_block{}) ->
+	encode_block(X);
+encode(X = #btc_tx{}) ->
+	encode_tx(X);
+encode(L) when is_list(L) ->
+	encode_tx_list(L, <<>>).
+
+
+encode_tx_list([H = #btc_tx{}|T], Acc) ->
+	Tx = encode_tx(H),
+	encode_tx_list(T, <<Acc/binary, Tx/binary>>);
+encode_tx_list([], Acc) ->
+	Acc.
+
+
+encode_block(B = #btc_block{}) ->
 	#btc_block{version = Version, prev_block = PrevHash, merkle_root = RootHash,
 		timestamp = Timestamp, bits = Bits, nonce = Nonce} = B,
 	TS = dttm:to_seconds(Timestamp),
-	<<Version:32/little, PrevHash:256/little, RootHash:256/little, TS:32/little, Bits:32/little, Nonce:32/little>>;
+	<<Version:32/little, PrevHash:256/little, RootHash:256/little, TS:32/little, Bits:32/little, Nonce:32/little>>.
 
-encode(Tx = #btc_tx{}) ->
-	encode([Tx]);
-
-encode(Records) when is_list(Records) ->
-	encode(Records, <<>>).
-
-
-encode([#btc_tx{id = _Id, version = Version, tx_in = TxIn, tx_out = TxOut, lock_time = LockTime}|T], Acc) ->
+encode_tx(#btc_tx{id = _Id, version = Version, tx_in = TxIn, tx_out = TxOut, lock_time = LockTime}) ->
 	TxInSize = encode_integer(length(TxIn)),
 	TxInBin = encode_tx_inputs(TxIn, <<>>),
 	TxOutSize = encode_integer(length(TxOut)),
 	TxOutBin = encode_tx_outputs(TxOut, <<>>),
-	Tx = <<Version:32/little, TxInSize/binary, TxInBin/binary, TxOutSize/binary, TxOutBin/binary, LockTime:32/little>>,
-	encode(T, <<Acc/binary, Tx/binary>>);
-encode([], Acc) ->
-	Acc.
+	<<Version:32/little, TxInSize/binary, TxInBin/binary, TxOutSize/binary, TxOutBin/binary, LockTime:32/little>>.
 
 
 encode_tx_inputs([#btc_tx_in{outpoint_ref = OutHash, outpoint_index = Index, sig_script = Script, sequence = Sequence}|T], Acc) ->
@@ -121,7 +144,7 @@ decode_coinbase_input(<<Hash:256, Index:32/little, Bin/binary>>) ->
 	{TxIn, BlockHeight, Bin1}.
 
 
-decode_transaction(Bin) ->
+decode_tx(Bin) ->
 	[Tx] = decode_transactions(Bin, 1, []),
 	Tx.
 

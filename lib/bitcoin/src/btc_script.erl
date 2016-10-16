@@ -59,7 +59,7 @@ exec(Hash, [op_drop|T], [_|Acc]) ->
 exec(Hash, [op_dup|T], [H|Acc]) ->
 	exec(Hash, T, [H, H|Acc]);
 exec(Hash, [op_hash160|T], [H|Acc]) ->
-	H0 = bitcoin_crypto:hash160(H),
+	H0 = btc_crypto:hash160(H),
 	exec(Hash, T, [H0|Acc]);
 exec(Hash, [op_equalverify|T], [H, H|Acc]) ->
 	exec(Hash, T, Acc);
@@ -69,7 +69,7 @@ exec(Hash, [op_checksig|T], [Pub, Sig|Acc]) ->
 	Size = byte_size(Sig) - 1,
 	<<Sig0:Size/binary, ?SIG_HASH_ALL>> = Sig,
 	?TTY({hash, Hash, sig, Sig0, pk, Pub}),
-	case bitcoin_crypto:verify({digest, Hash}, Sig0, Pub) of
+	case btc_crypto:verify({digest, Hash}, Sig0, Pub) of
 	true ->
 		exec(Hash, T, Acc);
 	false ->
@@ -87,7 +87,7 @@ sig_script(Signature, PublicKey) ->
 
 
 pk_script(Address) ->
-	Hash = bitcoin_crypto:decode_address(Address),
+	Hash = btc_crypto:decode_address(Address),
 	encode([op_dup, op_hash160, Hash, op_equalverify, op_checksig]).
 
 

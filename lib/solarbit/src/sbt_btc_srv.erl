@@ -202,6 +202,8 @@ maybe_close_socket(Socket) ->
 
 get_host_list(local) ->
 	[loopback, {127, 0, 0, 1}, {0, 0, 0, 0}];
+get_host_list(pool) ->
+	[{23, 92, 17, 46}];
 get_host_list(remote) ->
 	List = [{rand:uniform(), parse_ip(N)} || N <- ?SEED_BITNODES_IO],
 	[X || {_, X} <- lists:sort(List)].
@@ -245,11 +247,11 @@ handle_message(#btc_inv{vectors = VectorList}, State = #{unconfirmed := TxList})
 	NewBlocks = [X || X = {block, _} <- VectorList],
 	case NewBlocks of
 	[] ->
-		ok;
+		{noreply, State0};
 	_ ->
-		log(io_lib:format("<= INV blocks:~p, txns:~p", [length(NewBlocks), length(TxList0)]))
-	end,
-	{reply, #btc_getdata{vectors = VectorList}, State0};
+		log(io_lib:format("<= INV blocks:~p, txns:~p", [length(NewBlocks), length(TxList0)])),
+		{reply, #btc_getdata{vectors = NewBlocks}, State0}
+	end;
 handle_message(Block = #btc_block{id = BlockId, height = BlockHeight, txns = Txns}, State = #{unconfirmed := TxList, notify := Notify}) ->
 	db:save({btc_block, BlockId, Block#btc_block{txns = []}}),
 	db:save({btc_height, BlockHeight, BlockId}),

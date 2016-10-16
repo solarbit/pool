@@ -51,3 +51,69 @@ extract_blocks(Fd, Count, Acc) when Count > 0 ->
 	end;
 extract_blocks(_, _, Acc) ->
 	{ok, lists:reverse(Acc)}.
+
+
+utxo(N) ->
+	Path = ?BLOCK_DIR ++ "blk00400.dat",
+	case filelib:is_regular(Path) of
+	true ->
+		{ok, Fd} = file:open(Path, [binary, read]),
+		UTXO = extract_utxo(Fd, 0, N, #{}),
+		ok = file:close(Fd),
+		UTXO;
+	false ->
+		{invalid_path, Path}
+	end.
+
+
+extract_utxo(Fd, Count, Max, Map) when Count =< Max ->
+	case file:read(Fd, 8) of
+	{ok, <<?BITCOIN_MAGIC:32, BlockSize:32/little>>} ->
+		{ok, Bin} = file:read(Fd, BlockSize),
+		Block = #btc_block{height = Height, timestamp = TS} = btc_codec:decode_block(Bin),
+		Map0 = parse_utxo(Block, Map),
+		?TTY({block, Count, Height, {utxo, maps:size(Map0)}, TS}),
+		extract_utxo(Fd, Count + 1, Max, Map0);
+	{ok, <<0:64>>} ->
+		{ok, Map};
+	{ok, Other} ->
+		?TTY({unexpected, Other}),
+		{ok, Map};
+	eof ->
+		{ok, Map};
+	Error ->
+		Error
+	end;
+extract_utxo(_Fd, _, _, Map) ->
+	Map.
+
+
+parse_utxo(#btc_block{txns = [Coinbase|TX]}, Map) ->
+	Map0 = parse_utxo_out([Coinbase|TX], Map),
+	Map1 = parse_utxo_in(TX, Map0),
+	Map1.
+
+
+parse_utxo_out([#btc_tx{id = TxId, tx_out = Out}|T], Map) ->
+	Map0 = parse_utxo_out(TxId, Out, 0, Map),
+	parse_utxo_out(T, Map0);
+parse_utxo_out([], Map) ->
+	Map.
+
+parse_utxo_out(TxId, [#btc_tx_out{value = V}|T], N, Map) ->
+	parse_utxo_out(TxId, T, N + 1, maps:put({TxId, N}, V, Map));
+parse_utxo_out(_, [], _N, Map) ->
+	Map.
+
+
+parse_utxo_in([#btc_tx{tx_in = In}|T], Map) ->
+	Map0 = parse_utxo_in0(In, Map),
+	parse_utxo_in(T, Map0);
+parse_utxo_in([], Map) ->
+	Map.
+
+
+parse_utxo_in0([#btc_tx_in{outpoint_ref = TxId, outpoint_index = N}|T], Map) ->
+	parse_utxo_in0(T, maps:remove({TxId, N}, Map));
+parse_utxo_in0([], Map) ->
+	Map.

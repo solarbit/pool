@@ -4,6 +4,7 @@
 -module(solarbit).
 
 -include("solarbit.hrl").
+-include_lib("bitcoin/include/bitcoin.hrl").
 
 -compile(export_all).
 
@@ -17,6 +18,11 @@ start() ->
 
 stop() ->
 	application:stop(solarbit).
+
+
+genesis() ->
+	Request = #btc_getblocks{block_locator_hashes = [?GENESIS_BLOCK]},
+	sbt_btc_srv:send(Request).
 
 
 miners() ->
@@ -41,6 +47,8 @@ state() -> [
 
 connect(local) ->
 	sbt_btc_srv:connect(local);
+connect(pool) ->
+	sbt_btc_srv:connect(pool);
 connect(remote) ->
 	sbt_btc_srv:connect(remote).
 
