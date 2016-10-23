@@ -19,7 +19,7 @@ start() ->
 
 start_link([]) ->
 	DataPath = code:priv_dir(solarbit) ++ "/db." ++ atom_to_list(node()),
-	?LOG("Database Path: " ++ DataPath),
+	?LOG(iolist_to_binary("Database Path: " ++ DataPath)),
 	case mnesia:system_info(is_running) of
 	no ->
 		% NOTE: Mnesia MUST NOT be running for this call to be safe...
@@ -36,7 +36,7 @@ start_link([]) ->
 			Result = ensure_tables(?DB_TABLES),
 			case Result of
 			{ok, Tables, Existing} when is_list(Tables) ->
-				?LOG(io_lib:format("Tables: ~p", [lists:sort(Tables ++ Existing)]));
+				?LOG(iolist_to_binary(io_lib:format("Tables: ~p", [lists:sort(Tables ++ Existing)])));
 			_ ->
 				?LOG(Result)
 			end,

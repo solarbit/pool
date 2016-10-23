@@ -19,10 +19,10 @@ stop() ->
 	gen_server:cast(?MODULE, stop).
 
 
-write(Module, Message) when is_atom(Module), is_binary(Message) ->
-	gen_server:cast(?MODULE, {log, Module, Message});
-write(Module, Message) when is_list(Message) ->
-	write(Module, iolist_to_binary(Message)).
+write(Module, [Prefix, Message]) when is_atom(Prefix) ->
+	gen_server:cast(?MODULE, {log, Module, [prefix(Prefix), format(Message)]});
+write(Module, Message) when is_atom(Module) ->
+	gen_server:cast(?MODULE, {log, Module, format(Message)}).
 
 
 init([]) ->
@@ -55,3 +55,39 @@ code_change(_OldVsn, State, _Extra) ->
 terminate(_Reason, _State = #{file := File}) ->
 	file:close(File),
 	ok.
+
+
+format(X) when is_binary(X) ->
+	X;
+format(X) when is_list(X) ->
+	case is_iolist(X) of
+	true ->
+		X;
+	false ->
+		io_lib:format("~w", [X])
+	end;
+format(X) ->
+	io_lib:format("~w", [X]).
+
+
+is_iolist([]) ->
+	true;
+is_iolist([H|T]) when is_binary(H) ->
+	is_iolist(T);
+is_iolist([H|T]) when is_integer(H), H >= 0, H =< 255 ->
+	is_iolist(T);
+is_iolist([H|T]) when is_list(H) ->
+	case is_iolist(H) of
+	true ->
+		is_iolist(T);
+	false ->
+		false
+	end;
+is_iolist(_) ->
+	false.
+
+
+prefix(local) -> "== ";
+prefix(in) -> "<= ";
+prefix(out) -> "=> ";
+prefix(_) -> "".

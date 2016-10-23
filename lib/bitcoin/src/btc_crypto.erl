@@ -62,6 +62,13 @@ encode_address(PublicKey) when byte_size(PublicKey) =:= 65 ->
 	base58:encode(<<KeyHash/binary, Checksum:32>>).
 
 
+decode_address(Address) when is_binary(Address), byte_size(Address) =< 34 ->
+	<<KeyHash:21/binary, Checksum:32>> = base58:decode(Address),
+	Checksum = checksum(KeyHash),
+	<<?VERSION_PUBKEY_HASH, Hash160/binary>> = KeyHash,
+	Hash160.
+
+
 verify_address(Address) when is_binary(Address), byte_size(Address) =< 34 ->
 	<<KeyHash:21/binary, Checksum:32>> = base58:decode(Address),
 	Checksum =:= checksum(KeyHash);

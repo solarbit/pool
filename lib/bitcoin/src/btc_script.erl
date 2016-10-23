@@ -15,11 +15,16 @@ encode(Script) ->
 	encode(Script, <<>>).
 
 encode([Opcode|T], Acc) when is_atom(Opcode) ->
-	{N, Opcode} = lists:keyfind(Opcode, 2, ?OPCODES),
-	encode(T, <<Acc/binary, N>>);
+	{Code, Opcode} = lists:keyfind(Opcode, 2, ?OPCODES),
+	encode(T, <<Acc/binary, Code>>);
 encode([Bin|T], Acc) when is_binary(Bin) ->
-	Size = byte_size(Bin),
-	encode(T, <<Acc/binary, Size, Bin/binary>>);
+	case byte_size(Bin) of
+	Size when Size =< 75 ->
+		encode(T, <<Acc/binary, Size, Bin/binary>>);
+	Size when Size =< 255 ->
+		{Code, op_pushdata} = lists:keyfind(op_pushdata, 2, ?OPCODES),
+		encode(T, <<Acc/binary, Code, Size, Bin/binary>>)
+	end;
 encode([], Acc) ->
 	Acc.
 
@@ -49,46 +54,57 @@ decode(<<>>, Acc) ->
 	{ok, lists:reverse(Acc)}.
 
 
-exec(Hash, Script) ->
-	exec(Hash, Script, []).
+exec(Script) ->
+	exec(Script, []).
 
-exec(Hash, [H|T], Acc) when is_binary(H) ->
-	exec(Hash, T, [H|Acc]);
-exec(Hash, [op_drop|T], [_|Acc]) ->
-	exec(Hash, T, Acc);
-exec(Hash, [op_dup|T], [H|Acc]) ->
-	exec(Hash, T, [H, H|Acc]);
-exec(Hash, [op_hash160|T], [H|Acc]) ->
+exec(Script, Data) ->
+	exec(Script, [], Data).
+
+exec([H|T], Stack, Alt) when is_binary(H) ->
+	exec(T, [H|Stack], Alt);
+exec([op_false|T], Stack, Alt) ->
+	exec(T, [0|Stack], Alt);
+exec([op_true|T], Stack, Alt) ->
+	exec(T, [1|Stack], Alt);
+exec([op_drop|T], [_|Stack], Alt) ->
+	exec(T, Stack, Alt);
+exec([op_2drop|T], [_,_|Stack], Alt) ->
+	exec(T, Stack, Alt);
+exec([op_dup|T], [H|Stack], Alt) ->
+	exec(T, [H, H|Stack], Alt);
+exec([op_return|_], _, _) ->
+	ok;
+exec([op_hash160|T], [H|Stack], Alt) ->
 	H0 = btc_crypto:hash160(H),
-	exec(Hash, T, [H0|Acc]);
-exec(Hash, [op_equalverify|T], [H, H|Acc]) ->
-	exec(Hash, T, Acc);
-exec(_, [op_equalverify|_], _) ->
+	exec(T, [H0|Stack], Alt);
+exec([op_equalverify|T], [H, H|Stack], Alt) ->
+	exec(T, Stack, Alt);
+exec([op_equalverify|_], _, _) ->
 	{error, op_equalverify};
-exec(Hash, [op_checksig|T], [Pub, Sig|Acc]) ->
+exec([op_checksig|T], [Pub, Sig|Stack], [Hash|Alt]) ->
 	Size = byte_size(Sig) - 1,
 	<<Sig0:Size/binary, ?SIG_HASH_ALL>> = Sig,
 	?TTY({hash, Hash, sig, Sig0, pk, Pub}),
 	case btc_crypto:verify({digest, Hash}, Sig0, Pub) of
 	true ->
-		exec(Hash, T, Acc);
+		exec(T, Stack, Alt);
 	false ->
 		{error, op_checksig}
 	end;
-exec(_, [], []) ->
+exec([], [], _) ->
 	ok;
-exec(_, Script, Acc) ->
-	?TTY({Script, Acc}),
+exec(Script, Stack, Alt) ->
+	?TTY({Script, Stack, Alt}),
 	{error, Script}.
 
 
-sig_script(Signature, PublicKey) ->
-	encode([<<Signature/binary, ?SIG_HASH_ALL>>, PublicKey]).
+sig_script(PublicKey, Signature) ->
+	[<<Signature/binary, ?SIG_HASH_ALL>>, PublicKey].
 
 
 pk_script(Address) ->
-	Hash = btc_crypto:decode_address(Address),
-	encode([op_dup, op_hash160, Hash, op_equalverify, op_checksig]).
+	Hash160 = btc_crypto:decode_address(Address),
+	[op_dup, op_hash160, Hash160, op_equalverify, op_checksig].
 
 
 %%% Tests

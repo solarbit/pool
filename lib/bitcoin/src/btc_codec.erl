@@ -8,27 +8,6 @@
 -compile(export_all).
 
 
-get_bits(Target) ->
-	get_bits(<<Target:256>>, 32).
-
-get_bits(<<0, Bin/binary>>, Exponent) ->
-	get_bits(Bin, Exponent - 1);
-get_bits(<<Mantissa:24, _/binary>>, Exponent) ->
-	<<Bits:32>> = <<0:3, Exponent:5, Mantissa:24>>,
-	Bits.
-
-
-get_target(Bits) when is_integer(Bits) ->
-	<<0:3, Exponent:5, Mantissa:24>> = <<Bits:32>>,
-	true = Exponent > 3,
-	ShiftCount = (Exponent - 3) bsl 3,
-	Mantissa bsl ShiftCount.
-
-
-get_difficulty(Bits) ->
-	?BASE_DIFFICULTY / get_target(Bits).
-
-
 encode(X = #btc_block{}) ->
 	encode_block(X);
 encode(X = #btc_tx{}) ->
@@ -200,16 +179,33 @@ decode_integer(<<255, X:64/little, Bin/binary>>) ->
 	{X, Bin}.
 
 
+get_bits(Target) ->
+	get_bits(<<Target:256>>, 32).
 
-target(#btc_block{bits = Bits}) ->
-	target(Bits);
-target(Bits) when is_integer(Bits) ->
+get_bits(<<0, Bin/binary>>, Exponent) ->
+	get_bits(Bin, Exponent - 1);
+get_bits(<<Mantissa:24, _/binary>>, Exponent) ->
+	<<Bits:32>> = <<0:3, Exponent:5, Mantissa:24>>,
+	Bits.
+
+
+get_target(Bits) when is_integer(Bits) ->
 	<<0:3, Exponent:5, Mantissa:24>> = <<Bits:32>>,
 	true = Exponent > 3,
 	ShiftCount = (Exponent - 3) bsl 3,
 	Mantissa bsl ShiftCount.
 
+% TODO: Remove
+target(#btc_block{bits = Bits}) ->
+	target(Bits);
+target(Bits) when is_integer(Bits) ->
+	get_target(Bits).
 
+
+get_difficulty(Bits) ->
+	?BASE_DIFFICULTY / get_target(Bits).
+
+% TODO: Remove
 difficulty(Block) ->
 	?BASE_DIFFICULTY / target(Block).
 
@@ -219,14 +215,18 @@ get_block_height(#btc_block{txns = []}) ->
 get_block_height(#btc_block{txns = [Coinbase|_]}) ->
 	#btc_tx{tx_in = [#btc_tx_in{sig_script = Script}]} = Coinbase,
 	case Script of
-	[H|_] when is_binary(H), byte_size(H) == 3 ->
-		<<BlockHeight:24/little>> = H;
-	_ when is_binary(Script) ->
-		<<3, BlockHeight:24/little, _/binary>> = Script;
+	[<<BlockHeight:24/little>>|_] ->
+		ok;
+	<<3, BlockHeight:24/little, _/binary>> ->
+		ok;
 	_ ->
 		BlockHeight = unknown
 	end,
 	BlockHeight.
+
+
+get_block_reward(Height) ->
+	?BASE_BLOCK_REWARD bsr (Height div ?REWARD_HALVING).
 
 
 -ifdef(TEST).

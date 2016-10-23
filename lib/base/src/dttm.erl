@@ -74,8 +74,9 @@ to_seconds(DTTM = {_, _}) ->
 to_seconds(Date = {_, _, _}) ->
 	calendar:datetime_to_gregorian_seconds({Date, {0,0,0}}) - ?UNIX_EPOCH_ZERO.
 
+
 datetime() ->
-	{date(), time()}.
+	datetime(dttm:now()).
 
 datetime(Seconds) ->
 	datetime(unix, Seconds).

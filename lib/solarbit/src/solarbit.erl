@@ -1,5 +1,5 @@
-% Copyright 2016 solarbit.cc <steve@solarbit.cc>
-% See LICENSE
+% Copyright 2016 Steve Davis <steve@solarbit.cc>
+% See MIT LICENSE
 
 -module(solarbit).
 
@@ -9,8 +9,8 @@
 -compile(export_all).
 
 -export([start/0, stop/0]).
--export([info/0, key/1, state/0, send/2, coinbase/0, connect/1]).
-
+-export([info/0, state/0, connect/1]).
+-compile(export_all).
 
 start() ->
 	application:start(solarbit).
@@ -20,29 +20,38 @@ stop() ->
 	application:stop(solarbit).
 
 
+set_bitcoind(Host, Port) when is_tuple(Host), tuple_size(Host) == 4, is_integer(Port) ->
+	sbt_btc_srv:set_bitcoind(Host, Port).
+
+
+start_cpu_miner() ->
+	case whereis(sbt_sup) of
+	Pid when is_pid(Pid) ->
+		sbt_sup:start_service(sbt_miner_srv);
+	undefined ->
+		{error, {not_running, ?MODULE}}
+	end.
+
+
 genesis() ->
 	Request = #btc_getblocks{block_locator_hashes = [?GENESIS_BLOCK]},
 	sbt_btc_srv:send(Request).
 
 
-miners() ->
-	sbt_pool_srv:miners().
-
-
-key(Key) when is_binary(Key) ->
-	sbt_pool_srv:set_key(Key).
-
-
 info() -> [
-	sbt_pool_srv:miners(),
+	db:info(),
 	sbt_btc_srv:info()
 ].
 
 
-state() -> [
-	sys:get_state(sbt_pool_srv, 2000),
-	sys:get_state(sbt_btc_srv, 2000)
-].
+state() ->
+	State = [{pool, sys:get_state(sbt_pool_srv, 2000)}, {btcd, sys:get_state(sbt_btc_srv, 2000)}],
+	case whereis(sbt_miner_srv) of
+	Pid when is_pid(Pid) ->
+		State ++ [{miner, sys:get_state(sbt_miner_srv, 2000)}];
+	undefined ->
+		State
+	end.
 
 
 connect(local) ->
@@ -53,43 +62,21 @@ connect(remote) ->
 	sbt_btc_srv:connect(remote).
 
 
-coinbase() ->
-	{ok, Miners} = miners(),
-	[{Host, sbt_pool_srv:coinbase(Miner)} || Miner = #sbt_miner{ip = Host} <- Miners].
-
-
 ping() ->
 	sbt_btc_srv:ping().
 
+
 send(Miner, ping) ->
-	sbt_pool_srv:send(Miner, #sbt_message{type = <<"PING">>});
+	sbt_pool_srv:send(Miner, #sbt_message{type = 'PING', nonce = dttm:now()});
 send(Miner, stat) ->
-	sbt_pool_srv:send(Miner, #sbt_message{type = <<"STAT">>});
+	sbt_pool_srv:send(Miner, #sbt_message{type = 'STAT', nonce = dttm:now()});
 send(Miner, wait) ->
-	sbt_pool_srv:send(Miner, #sbt_message{type = <<"WAIT">>});
+	sbt_pool_srv:send(Miner, #sbt_message{type = 'WAIT'});
 send(Miner, test) ->
 	Hash = btc_crypto:hash256(<<"solarbit.cc">>),
 	Payload = <<431498:32/little, (?TEST_BLOCK)/binary, 1, Hash/binary>>,
-	sbt_pool_srv:send(Miner, #sbt_message{type = <<"MINE">>, payload = Payload}).
+	sbt_pool_srv:send(Miner, #sbt_message{type = 'MINE', payload = Payload}).
 
 
 log(M) ->
 	?LOG(M).
-
-
-test() ->
-	Key = <<"SolarBitSolarBit">>,
-	{ok, Socket} = gen_udp:open(?UDP_PORT, [binary]),
-	Message = #sbt_message{type = <<"HELO">>, nonce = dttm:now()},
-	?TTY({request, Message}),
-	Bin = sbt_codec:encode(Key, Message),
-	ok = gen_udp:send(Socket, "solarbit.cc", ?UDP_PORT, Bin),
-	receive
-	{udp, Socket, Host, Port, Packet} ->
-		?TTY({response, Host, Port, sbt_codec:decode(Key, Packet)});
-	Other ->
-		?TTY({other, Other})
-	after 5000 ->
-		timeout
-	end,
-	gen_udp:close(Socket).

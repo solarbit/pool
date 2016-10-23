@@ -11,14 +11,16 @@
 -define(SBT_MAGIC, 1397574912). % <<"SMM", 0>>
 -define(SBT_VERSION, <<0, 4, 0, $A>>). % semver: 0.4.0-A
 
--define(NULL_XXTEA_KEY, <<"SolarBitSolarBit">>). % <<0:128>>).
+-define(NULL_XXTEA_KEY, <<0:128>>).
 
 -define(COINBASE_ID, <<"//SolarBit/SMM/A/">>).
 -define(SBT_BTC_CLIENT, <<"/SolarBit:0.4.0-A/">>).
 
--record(sbt_message, {host = localhost, magic = ?SBT_MAGIC, version = ?SBT_VERSION, nonce = 1, type, payload = <<>>}).
+-define(SBT_MINER_FLAGS, [solar, hardware, reserved, tethered, ready, compact, valid, paused]).
 
--record(sbt_miner, {ip, port, address, key, time}).
+-record(sbt_message, {host = localhost, magic = ?SBT_MAGIC, version = ?SBT_VERSION, nonce = 0, type, payload = #{}}).
+
+-record(sbt_miner, {host, port, flags, address, key, time}).
 
 
 -define(DB_TABLES, [

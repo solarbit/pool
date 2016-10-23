@@ -8,7 +8,7 @@
 -include_lib("bitcoin/include/bitcoin_seed.hrl").
 
 -export([start_link/1, stop/0]).
--export([connect/1, notify/1, ping/0, send/1, info/0, state/0]).
+-export([connect/1, notify/1, ping/0, set_bitcoind/2, send/1, info/0, state/0]).
 
 -behaviour(gen_server).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, code_change/3, terminate/2]).
@@ -33,6 +33,10 @@ ping() ->
 	send(#btc_ping{nonce = btc_crypto:nonce()}).
 
 
+set_bitcoind(Host, Port) ->
+	db:save({sbt_config, sbt_btc_address, {Host, Port}}).
+
+
 send(Message) ->
 	gen_server:call(?MODULE, {send, Message}).
 
@@ -42,8 +46,8 @@ notify(Types) ->
 
 
 info() ->
-	gen_server:call(?MODULE, info).
-
+	{ok, Info} = gen_server:call(?MODULE, info),
+	Info.
 
 state() ->
 	gen_server:call(?MODULE, state).
@@ -60,17 +64,17 @@ init(_Opts) ->
 		block_height => undefined,
 		notify => []
 	},
-	case do_connect(local, State) of
+	case do_connect(pool, State) of
 	{ok, State0} ->
 		{ok, State0};
-	{error, Error, State0} ->
-		?TTY({local, Error}),
+	{error, _Error, State0} ->
+		?LOG([none, <<"Local BTC Daemon Offline">>]),
 		{ok, State0}
 	end.
 
 
 handle_call({send, Message}, _From, State = #{socket := Socket}) ->
-	log([out, Message]),
+	?LOG([out, Message]),
 	Packet = btc_protocol:encode(Message),
 	Reply = gen_tcp:send(Socket, Packet),
 	{reply, Reply, State};
@@ -78,7 +82,7 @@ handle_call({notify, Pid, _Types}, _From, State = #{notify := Notify}) when is_p
 	{reply, ok, State#{notify => [Pid|Notify]}};
 handle_call(info, _From, State) ->
 	#{host := Host, unconfirmed := Unconfirmed, block_height := Height} = State,
-	Info = [{btc_host, Host}, {block_height, Height}, {unconfirmed_tx, length(Unconfirmed)}],
+	Info = [{btc_host, Host}, {block_height, Height}, {mempool, length(Unconfirmed)}],
 	{reply, {ok, Info}, State};
 handle_call(state, _From, State) ->
 	{reply, {ok, State}, State}.
@@ -98,7 +102,7 @@ handle_cast(stop, State = #{socket := Socket}) ->
 	_ ->
 		gen_tcp:close(Socket)
 	end,
-	log(<<"Stopped">>),
+	?LOG(<<"Stopped">>),
 	{stop, normal, State}.
 
 
@@ -108,7 +112,7 @@ handle_info({tcp, _Port, Packet}, State = #{socket := Socket, codec := Decoder})
 	inet:setopts(Socket, [{active, once}]),
 	{noreply, State0};
 handle_info({tcp_closed, Port}, State = #{host := Host}) ->
-	log(io_lib:format("Closed: ~p", [Host])),
+	?LOG(io_lib:format("Closed: ~p", [Host])),
 	ok = gen_tcp:close(Port),
 	TimerRef = erlang:start_timer(?RECONNECT_TIMER, self(), reconnect),
 	{noreply, State#{socket => undefined, host => undefined, timer => TimerRef} };
@@ -117,8 +121,8 @@ handle_info(timeout, State = #{socket := Socket}) ->
 	ok = gen_tcp:close(Socket),
 	TimerRef = erlang:start_timer(?RECONNECT_TIMER, self(), reconnect),
 	{noreply, State#{socket => undefined, host => undefined, timer => TimerRef} };
-handle_info({timeout, TimerRef, reconnect}, State) ->
-	?TTY({do_reconnect, TimerRef}),
+handle_info({timeout, _TimerRef, reconnect}, State) ->
+	% ?TTY({do_reconnect, TimerRef}),
 	case do_connect(local, State) of
 	{ok, State0} ->
 		ok;
@@ -157,12 +161,11 @@ do_connect(Type, State = #{socket := OldSocket, timer := TimerRef}) ->
 		{error, Reason, State0#{socket => undefined, host => undefined,  timer => TimerRef0}}
 	end.
 
-
 do_connect([IP|T]) ->
 	Port = ?BITCOIN_PORT,
 	case gen_tcp:connect(IP, Port, [binary, {packet, 0}, {active, once}], ?CONNECT_TIMEOUT) of
 	{ok, Socket} ->
-		log(io_lib:format("Connected: ~p", [{IP, Port}])),
+		?LOG(io_lib:format("Connected: ~p", [{IP, Port}])),
 		{ok, LocalPort} = inet:port(Socket),
 		Version = #btc_version{
 			services = ?NODE_NONE,
@@ -172,12 +175,12 @@ do_connect([IP|T]) ->
 			nonce = btc_crypto:nonce()
 		},
 		Packet = btc_protocol:encode(Version),
-		log([out, Version]),
+		?LOG([out, Version]),
 		ok = gen_tcp:send(Socket, Packet),
 		{ok, {Host, Port}} = inet:peername(Socket),
 		{ok, {Host, Port}, Socket};
 	{error, Reason} ->
-		log([local, io_lib:format("{~p, ~p} ~p", [IP, Port, Reason])]),
+		?LOG([local, io_lib:format("{~p, ~p} ~p", [IP, Port, Reason])]),
 		do_connect(T)
 	end;
 do_connect([]) ->
@@ -188,7 +191,7 @@ do_connect([]) ->
 maybe_cancel_timer(undefined) ->
 	ok;
 maybe_cancel_timer(TimerRef) ->
-	?TTY({cancelling_timer, TimerRef}),
+	% ?TTY({cancelling_timer, TimerRef}),
 	erlang:cancel_timer(TimerRef).
 
 
@@ -200,10 +203,15 @@ maybe_close_socket(Socket) ->
 	gen_tcp:close(Socket).
 
 
+get_host_list(pool) ->
+	case db:lookup(sbt_config, sbt_btc_address) of
+	{sbt_config, sbt_btc_address, {Host, ?BITCOIN_PORT}} ->
+		[Host];
+	undefined ->
+		get_host_list(local)
+	end;
 get_host_list(local) ->
 	[loopback, {127, 0, 0, 1}, {0, 0, 0, 0}];
-get_host_list(pool) ->
-	[{23, 92, 17, 46}];
 get_host_list(remote) ->
 	List = [{rand:uniform(), parse_ip(N)} || N <- ?SEED_BITNODES_IO],
 	[X || {_, X} <- lists:sort(List)].
@@ -218,7 +226,7 @@ handle_messages([Message|T], State = #{socket := Socket}) ->
 	{noreply, State0} ->
 		ok;
 	{reply, Reply, State0} ->
-		log([out, Reply]),
+		?LOG([out, Reply]),
 		Packet0 = btc_protocol:encode(Reply),
 		gen_tcp:send(Socket, Packet0)
 	end,
@@ -228,17 +236,17 @@ handle_messages([], State) ->
 
 
 handle_message(M = #btc_version{}, State) ->
-	log([in, M]),
+	?LOG([in, M]),
 	{reply, #btc_verack{}, State};
 handle_message(M = #btc_verack{}, State) ->
-	log([in, M]),
+	?LOG([in, M]),
 	{noreply, State};
 handle_message(M = #btc_ping{nonce = Nonce}, State = #{unconfirmed := TxList}) ->
-	log(io_lib:format("MEMPOOL unconfirmed:~p", [length(TxList)])),
-	log([in, M]),
+	?LOG(io_lib:format("MEMPOOL unconfirmed:~p", [length(TxList)])),
+	?LOG([in, M]),
 	{reply, #btc_pong{nonce = Nonce}, State};
 handle_message(M = #btc_pong{nonce = _Nonce}, State) ->
-	log([in, M]),
+	?LOG([in, M]),
 	{noreply, State};
 handle_message(#btc_inv{vectors = VectorList}, State = #{unconfirmed := TxList}) ->
 	NewTx = [X || {tx, X} <- VectorList],
@@ -249,7 +257,7 @@ handle_message(#btc_inv{vectors = VectorList}, State = #{unconfirmed := TxList})
 	[] ->
 		{noreply, State0};
 	_ ->
-		log(io_lib:format("<= INV blocks:~p, txns:~p", [length(NewBlocks), length(TxList0)])),
+		?LOG([in, io_lib:format("INV blocks:~p, txns:~p", [length(NewBlocks), length(TxList0)])]),
 		{reply, #btc_getdata{vectors = NewBlocks}, State0}
 	end;
 handle_message(Block = #btc_block{id = BlockId, height = BlockHeight, txns = Txns}, State = #{unconfirmed := TxList, notify := Notify}) ->
@@ -257,9 +265,8 @@ handle_message(Block = #btc_block{id = BlockId, height = BlockHeight, txns = Txn
 	db:save({btc_height, BlockHeight, BlockId}),
 	ConfirmedTx = [X || #btc_tx{id = X} <- Txns],
 	TxList0 = TxList -- ConfirmedTx,
-	Log = io_lib:format("<= BLOCK height:~p confirmed:~p unconfirmed[was:~p now:~p]",
-		[BlockHeight, length(ConfirmedTx), length(TxList), length(TxList0)]),
-	log([none, Log]),
+	?LOG([none, io_lib:format("BLOCK height:~p confirmed:~p unconfirmed[was:~p now:~p]",
+		[BlockHeight, length(ConfirmedTx), length(TxList), length(TxList0)]) ]),
 	[Pid ! {block_found, Block#btc_block{txns = []}, TxList0} || Pid <- Notify],
 	{noreply, State#{unconfirmed => TxList0, block_height => BlockHeight}};
 
@@ -273,25 +280,11 @@ handle_message(Tx = #btc_tx{id = TxId, tx_in = TxIn}, State = #{unconfirmed := T
 		{noreply, State}
 	end;
 handle_message(#btc_addr{addr_list = List}, State) ->
-	log(io_lib:format("<= ADDR ~p", [List])),
+	?LOG([in, io_lib:format("ADDR ~p", [List])]),
 	{noreply, State};
 handle_message(Message, State) ->
-	log([in, Message]),
+	?LOG([in, Message]),
 	{noreply, State}.
-
-
-log(Message) when is_binary(Message) ->
-	log([none, Message]);
-log([Prefix, Message]) ->
-	?LOG([prefix(Prefix), logf(Message)]);
-log(Other) ->
-	?LOG(iolist_to_binary(Other)).
-
-
-prefix(none) -> "";
-prefix(in) -> "<= ";
-prefix(out) -> "=> ";
-prefix(_) -> "== ".
 
 
 logf(#btc_verack{}) ->
@@ -309,7 +302,5 @@ logf(#btc_getdata{vectors = Vectors}) ->
 logf(#btc_notfound{vectors = Vectors}) ->
 	Message = io_lib:format("~p", [length(Vectors)]),
 	["NOTFOUND number:", Message];
-logf(Message) when is_binary(Message); is_list(Message) ->
-	Message;
 logf(Message) ->
-	io_lib:format("~p", [Message]).
+	Message.

@@ -15,7 +15,33 @@ address(Wif) ->
 	btc_crypto:generate_address(Wif).
 
 
-%% NOTE: OSX/MacOS ONLY
+encode(Record) ->
+	btc_codec:encode(Record).
+
+
+decode(block, Bin) ->
+	btc_codec:decode_block(Bin);
+decode(tx, Bin) ->
+	btc_codec:decode_tx(Bin);
+decode(coinbase, Bin) ->
+	btc_codec:decode_coinbase(Bin).
+
+
+rules(BlockHeight) when is_integer(BlockHeight), BlockHeight >= 0 ->
+	BlockVersion = 4,
+	Reward = btc_codec:get_block_reward(BlockHeight),
+	DifficultyBits = btc_codec:get_bits(?BASE_DIFFICULTY), % TODO: !!!
+	{ok, BlockVersion, Reward, DifficultyBits}.
+
+
+get_merkle_root(Coinbase, TxnList) ->
+	TxHashes = [<<X:256/little>> || X <- TxnList],
+	CoinbaseHash = btc_crypto:hash256(btc_codec:encode(Coinbase)),
+	{Root, _Path} = btc_crypto:merkle_root([CoinbaseHash|TxHashes]),
+	{ok, Root}.
+
+
+%% NOTE: local machine
 -define(BLOCK_DIR, os:getenv("HOME") ++ "/bitcoin/").
 
 extract(File) ->

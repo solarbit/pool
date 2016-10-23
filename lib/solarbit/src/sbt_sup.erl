@@ -5,7 +5,7 @@
 
 -include("solarbit.hrl").
 
--export([start_link/0]).
+-export([start_link/0, start_service/1]).
 
 -behaviour(supervisor).
 -export([init/1]).
@@ -25,3 +25,8 @@ init([]) ->
 		?WORKER(sbt_btc_srv),
 		?WORKER(sbt_pool_srv)
 	] }}.
+
+
+start_service(Module) ->
+	ChildSpec = ?WORKER(Module),
+	supervisor:start_child(?MODULE, ChildSpec).
