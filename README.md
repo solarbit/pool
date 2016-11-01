@@ -1,7 +1,7 @@
 # Solarbit Pool Server Prototype A
 
-A quick UDP server in Erlang to test the SMM on the Arduino.
+The Pool server implementation in Erlang to work with the SMM on the Arduino over SSMP.
 
 Still working this up - will document when it becomes useful.
 
-Uses the draft SMM [Protocol](https://github.com/solarbit/pool/blob/master/protocol.md)
+Uses the draft SSMP [Protocol](https://github.com/solarbit/pool/blob/master/protocol.md)
