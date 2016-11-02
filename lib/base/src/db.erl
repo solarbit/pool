@@ -10,7 +10,7 @@
 
 -export([info/0, info/1]).
 -export([all/1, lookup/2, save/1, ensure/1]).
--export([create/1, read/2, update/1, delete/1]).
+-export([create/1, read/2, update/1, delete/1, delete/2]).
 -export([select/1, select/2, select/3, run/2]).
 -export([increment/2, dump_tables/1]).
 

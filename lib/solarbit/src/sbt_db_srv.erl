@@ -36,7 +36,7 @@ start_link([]) ->
 			Result = ensure_tables(?DB_TABLES),
 			case Result of
 			{ok, Tables, Existing} when is_list(Tables) ->
-				?LOG(iolist_to_binary(io_lib:format("Tables: ~p", [lists:sort(Tables ++ Existing)])));
+				?LOG(io_lib:format("Tables: ~p", [lists:sort(Tables ++ Existing)]));
 			_ ->
 				?LOG(Result)
 			end,
@@ -71,7 +71,7 @@ create_table(Table, Fields) when is_atom(Table), is_list(Fields) ->
 
 
 drop(Table) when is_atom(Table) ->
-	drop_tables([Table]).
+	{atomic, ok} = mnesia:delete_table(Table).
 
 
 drop_tables(Tables) when is_list(Tables) ->

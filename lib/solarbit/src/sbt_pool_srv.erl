@@ -30,7 +30,7 @@ send(Host, Message) when is_tuple(Host) ->
 init([]) ->
 	{sbt_config, sbt_pool_address, #btc_address{id = Address}} = db:ensure({sbt_config, sbt_pool_address, bitcoin:address()}),
 	{ok, Socket} = gen_udp:open(?UDP_PORT, [binary]),
-	{ok, Host} = inetx:ip(),
+	{ok, Host} = inet_ext:local_ip(),
 	{ok, Port} = inet:port(Socket),
 	%?TTY({pool, Host, Port}),
 	ok = sbt_btc_srv:notify([block]),
@@ -38,10 +38,10 @@ init([]) ->
 	{ok, #{socket => Socket, host => Host, port => Port, address => Address}}.
 
 
-handle_call({send, {IP, Port}, Message}, _From, State = #{socket := Socket}) ->
-	?LOG([out, Message]),
+handle_call({send, {Host, Port}, Message}, _From, State = #{socket := Socket, host := LocalHost, port := LocalPort}) ->
+	?LOG([out, Message#sbt_message{host = {LocalHost, LocalPort}}]),
 	Packet = sbt_codec:encode(?NULL_XXTEA_KEY, Message),
-	Reply = gen_udp:send(Socket, IP, Port, Packet),
+	Reply = gen_udp:send(Socket, Host, Port, Packet),
 	{reply, Reply, State};
 handle_call(miners, _From, State) ->
 	{ok, Miners} = db:all(sbt_miner),
@@ -61,11 +61,11 @@ handle_info({udp, Socket, Host, Port, Packet}, State) ->
 	M = #sbt_miner{} ->
 		Miner = M#sbt_miner{port = Port, time = dttm:now()};
 	undefined ->
-		Miner = #sbt_miner{host = Host, port = Port, key = ?NULL_XXTEA_KEY}
+		Miner = #sbt_miner{host = Host, port = Port, time = dttm:now(), key = ?NULL_XXTEA_KEY}
 	end,
 	Key = Miner#sbt_miner.key,
 	Message = sbt_codec:decode(Key, Packet),
-	?LOG([in, Message]),
+	?LOG([in, Message#sbt_message{host = {Host, Port}}]),
 	case handle_message(Message, Miner) of
 	{reply, Reply, Miner0} ->
 		?LOG([out, Reply]),

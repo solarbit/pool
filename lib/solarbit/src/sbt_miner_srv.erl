@@ -26,12 +26,13 @@ init([]) ->
 	% TODO: Use a BTC address from a cold store, don't do this in a prod environment!
 	{sbt_config, sbt_miner_address, #btc_address{id = Address}} = db:ensure({sbt_config, sbt_miner_address, bitcoin:address()}),
 	{ok, Socket} = gen_udp:open(0, [binary]),
+	{ok, Host} = inetx:local_ip(),
 	{ok, Port} = inet:port(Socket),
 	Key = ?NULL_XXTEA_KEY,
 	?LOG(<<"CPU Miner Started on port ", (integer_to_binary(Port))/binary>>),
 	Packet = sbt_codec:encode(Key, #sbt_message{type = 'HELO', nonce = dttm:now()}),
-	ok = gen_udp:send(Socket, localhost, ?UDP_PORT, Packet),
-	{ok, #{socket => Socket, port => Port, address => Address, key => Key, paused => false}}.
+	ok = gen_udp:send(Socket, Host, ?UDP_PORT, Packet),
+	{ok, #{socket => Socket, host => Host, port => Port, address => Address, key => Key, paused => false}}.
 
 
 handle_call(Message, _From, State) ->
@@ -39,7 +40,6 @@ handle_call(Message, _From, State) ->
 
 
 handle_cast(stop, State = #{socket := _Socket}) ->
-	?LOG(<<"CPU Miner Stopping">>),
 	{stop, normal, State}.
 
 
@@ -48,7 +48,7 @@ handle_info({udp, _Socket, Host, Port, _Packet}, State = #{port := Port}) ->
 	{noreply, State};
 handle_info({udp, Socket, Host, Port, Packet}, State = #{key := Key}) ->
 	Message = sbt_codec:decode(Key, Packet),
-	Message0 = Message#sbt_message{host = Host},
+	Message0 = Message#sbt_message{host = {Host, Port}},
 	%?TTY({in, Message0}),
 	case handle_message(Message0, State) of
 	{reply, Reply, State0} ->
@@ -66,6 +66,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 
 terminate(_Reason, _State = #{socket := Socket}) ->
+	?LOG(<<"CPU Miner Stopped">>),
 	gen_udp:close(Socket).
 
 

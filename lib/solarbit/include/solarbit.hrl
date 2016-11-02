@@ -1,5 +1,5 @@
 % solarbit.hrl
-% Copyright 2016 solarbit.cc <steve@solarbit.cc>
+% Copyright 2016 Steve Davis <steve@solarbit.cc>
 % See LICENSE
 
 -include_lib("base/include/base.hrl").
@@ -9,16 +9,16 @@
 -define(UDP_PORT, 21314). % <<"SB">>
 
 -define(SBT_MAGIC, 1397574912). % <<"SMM", 0>>
--define(SBT_VERSION, <<0, 4, 0, $A>>). % semver: 0.4.0-A
+-define(SBT_VERSION, <<0, 5, 0, $A>>). % semver: 0.4.0-A
 
 -define(NULL_XXTEA_KEY, <<0:128>>).
 
 -define(COINBASE_ID, <<"//SolarBit/SMM/A/">>).
--define(SBT_BTC_CLIENT, <<"/SolarBit:0.4.0-A/">>).
+-define(SBT_BTC_CLIENT, <<"/SolarBit:0.5.0-A/">>).
 
 -define(SBT_MINER_FLAGS, [solar, hardware, reserved, tethered, ready, compact, valid, paused]).
 
--record(sbt_message, {host = localhost, magic = ?SBT_MAGIC, version = ?SBT_VERSION, nonce = 0, type, payload = #{}}).
+-record(sbt_message, {host, magic = ?SBT_MAGIC, version = ?SBT_VERSION, nonce = 0, type, payload = #{}}).
 
 -record(sbt_miner, {host, port, flags, address, key, time}).
 

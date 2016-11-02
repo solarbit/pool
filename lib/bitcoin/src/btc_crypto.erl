@@ -30,18 +30,6 @@ nonce() ->
 	N.
 
 
-% TODO: Support for Compressed Public Keys/WIF format
-compress_public_key(<<4, PK:32/binary, _:31/binary, SuffixByte>>) ->
-	PrefixByte = compressed_public_key_prefix_byte(SuffixByte),
-	<<PrefixByte, PK:32/binary>>.
-
-
-compressed_public_key_prefix_byte(Byte) when Byte rem 2 =:= 0 ->
-	2;
-compressed_public_key_prefix_byte(_) ->
-	3.
-
-
 generate_address() ->
 	{Public, Private} = generate_keypair(),
 	Address = encode_address(Public),
@@ -92,6 +80,18 @@ decode_wif(Wif) ->
 	PrivateKey.
 
 
+% TODO: Support for Compressed Public Keys/WIF format
+compress_public_key(<<4, PK:32/binary, _:31/binary, SuffixByte>>) ->
+	PrefixByte = compressed_public_key_prefix_byte(SuffixByte),
+	<<PrefixByte, PK:32/binary>>.
+
+
+compressed_public_key_prefix_byte(Byte) when Byte rem 2 =:= 0 ->
+	2;
+compressed_public_key_prefix_byte(_) ->
+	3.
+
+
 generate_keypair() ->
 	crypto:generate_key(ecdh, ?ELLIPTIC_CURVE).
 
@@ -117,10 +117,6 @@ verify(ClearText, Signature, PublicKey) ->
 	crypto:verify(ecdsa, sha256, ClearText, Signature, [PublicKey, ?ELLIPTIC_CURVE]).
 
 
-merkle_root(Values) when is_list(Values) ->
-	Hashes = [hash256(Value) || Value <- Values],
-	hash_root(Hashes, [], []).
-
 merkle_root(CoinbaseValue, MerklePath) ->
 	StartingHash = hash256(CoinbaseValue),
 	merkle_root_from_path(StartingHash, MerklePath).
@@ -130,6 +126,11 @@ merkle_root_from_path(Hash, [H|T]) ->
 	merkle_root_from_path(NextHash, T);
 merkle_root_from_path(MerkleRoot, []) ->
 	MerkleRoot.
+
+
+merkle_root(Values) when is_list(Values) ->
+	Hashes = [hash256(Value) || Value <- Values],
+	hash_root(Hashes, [], []).
 
 
 hash_root(Hashes = [_Coinbase, H|_]) ->
